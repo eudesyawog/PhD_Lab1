@@ -25,11 +25,11 @@ class AuxXML :
         lstAux = []
         for Folder in self.__lstFolders :
             lstAux.extend(glob.glob(Folder+os.sep+"**"+os.sep+"*aux.xml",recursive=True))
-        print (str(len(lstAux)) + " Auxillary Files found will be deleted")
+        print (str(len(lstAux)) + " Auxillary File(s) found and deleted")
         for File in lstAux :
             os.remove(File)
 
 if __name__=="__main__" : 
-    lstFolders = ["/media/je/JE3/lab1/"]
+    lstFolders = ["/media/je/SATA_1"]
     AuxXMLObject = AuxXML(lstFolders)
     AuxXMLObject.clean()
