@@ -116,71 +116,62 @@ class ACP :
             vec_propres = vec_propres[:,ordre]
             tot = sum(val_propres)
             
-            # prop = np.cumsum(val_propres) * 100/tot
-            # outdic.setdefault('Time series',[]).append(os.path.basename(inFile).split('_',1)[0])
-            # outdic.setdefault('90% Variance',[]).append(np.where(prop>=90)[0][0]+1)
-            # outdic.setdefault('95% Variance',[]).append(np.where(prop>=95)[0][0]+1)
-            # outdic.setdefault('99% Variance',[]).append(np.where(prop>=99)[0][0]+1)
+            prop = np.cumsum(val_propres) * 100/tot
+            outdic.setdefault('Time series',[]).append(os.path.basename(inFile).split('_',1)[0])
+            outdic.setdefault('90% Variance',[]).append(np.where(prop>=90)[0][0]+1)
+            outdic.setdefault('95% Variance',[]).append(np.where(prop>=95)[0][0]+1)
+            outdic.setdefault('99% Variance',[]).append(np.where(prop>=99)[0][0]+1)
                 
-            for i,j,k in zip(val_propres,np.cumsum(val_propres),range(self._count)) :
-                outdic.setdefault('Time series',[]).append(os.path.basename(inFile).split('_',1)[0])
-                outdic.setdefault('Component',[]).append(k+1)
-                outdic.setdefault('Standard Deviation',[]).append(i**0.5)
-                outdic.setdefault('Proportion of Variance (%)',[]).append(np.round(i*100 /tot,2))
-                outdic.setdefault('Cumulative Proportion (%)',[]).append(np.round(j*100/tot,2))
+            # for i,j,k in zip(val_propres,np.cumsum(val_propres),range(self._count)) :
+            #     outdic.setdefault('Time series',[]).append(os.path.basename(inFile).split('_',1)[0])
+            #     outdic.setdefault('Component',[]).append(k+1)
+            #     outdic.setdefault('Standard Deviation',[]).append(i**0.5)
+            #     outdic.setdefault('Proportion of Variance (%)',[]).append(np.round(i*100 /tot,2))
+            #     outdic.setdefault('Cumulative Proportion (%)',[]).append(np.round(j*100/tot,2))
 
             self._recover = False
 
         outdf = pd.DataFrame.from_dict(outdic)
         outdf.to_csv(outCSV , index=False)
-    
-    def _save_pc (self, inFile) :
-        
-        with rasterio.open(inFile) as ds :
-            if self._recover :
-                self._rows = ds.height
-                self._cols = ds.width
-                self._count = ds.count
-                self._profile = ds.profile
-            X = np.empty((self._rows, self._cols, self._count),dtype=ds.profile['dtype'])
-            for i in range (self._count):
-                X[:,:,i] = ds.read(i+1)
 
-        X = X.reshape(self._rows*self._cols,self._count)
-        if self._norm :
-            X = StandardScaler().fit_transform(X)
-
-        model1 = PCA(n_components=self._count)
-        model1.fit_transform(X)
-        prop = model1.explained_variance_ratio_.cumsum()
-        ncomp = np.where(prop>=self._pvar/100)[0][0]+1
-
-        model2 = PCA(n_components=ncomp)
-        Z = model2.fit_transform(X)
-        Z = Z.reshape(self._rows, self._cols,ncomp)
-        
-        outFile = os.path.join(self._outPath,os.path.basename(inFile).replace("CONCAT_S2_GAPF.tif","PCA.tif"))
-        self._profile.update(nodata=None, count = ncomp, dtype=rasterio.dtypes.get_minimum_dtype(Z))
-
-        with rasterio.open(outFile, 'w', **self._profile) as ds :
-            for i in range(ncomp):
-                ds.write(Z[:,:,i].astype(rasterio.dtypes.get_minimum_dtype(Z)),i+1)
-
-        self._recover = False
-        return (inFile)
-
-    def save_pc (self, pvar=90, NUM_WORKERS=5):
+    def save_pc (self, pvar=90):
         """
         Save Principal Components that keep (percent) of variance
         """
-        self._pvar = pvar
-        pool = Pool(processes=NUM_WORKERS)
-        start_time = time.time()
-        results = pool.imap(self._save_pc, self._lstFiles)
-        for result in results :
-            print (result)
-        end_time = time.time()
-        print("Time for process : %ssecs" % (end_time - start_time))
+
+        for inFile in self._lstFiles:
+            print (inFile, "\t normalization : %s"%self._norm)
+            with rasterio.open(inFile) as ds :
+                if self._recover :
+                    self._rows = ds.height
+                    self._cols = ds.width
+                    self._count = ds.count
+                    self._profile = ds.profile
+                X = np.empty((self._rows, self._cols, self._count),dtype=ds.profile['dtype'])
+                for i in range (self._count):
+                    X[:,:,i] = ds.read(i+1)
+
+            X = X.reshape(self._rows*self._cols,self._count)
+            if self._norm :
+                X = StandardScaler().fit_transform(X)
+
+            model1 = PCA(n_components=self._count)
+            model1.fit_transform(X)
+            prop = model1.explained_variance_ratio_.cumsum()
+            ncomp = np.where(prop>=pvar/100)[0][0]+1
+
+            model2 = PCA(n_components=ncomp)
+            Z = model2.fit_transform(X)
+            Z = Z.reshape(self._rows, self._cols,ncomp)
+            
+            outFile = os.path.join(self._outPath,os.path.basename(inFile).replace("CONCAT_S2_GAPF.tif","PCA.tif"))
+            self._profile.update(nodata=None, count = ncomp, dtype=rasterio.dtypes.get_minimum_dtype(Z))
+
+            with rasterio.open(outFile, 'w', **self._profile) as ds :
+                for i in range(ncomp):
+                    ds.write(Z[:,:,i].astype(rasterio.dtypes.get_minimum_dtype(Z)),i+1)
+
+            self._recover = False
                     
 if __name__ == '__main__':
 
