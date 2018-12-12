@@ -30,6 +30,6 @@ class AuxXML :
             os.remove(File)
 
 if __name__=="__main__" : 
-    lstFolders = ["/media/je/SATA_1"]
+    lstFolders = ["/home/je","/media/je/SATA_1","/media/je/SATA_2","/media/je/JE3"]
     AuxXMLObject = AuxXML(lstFolders)
     AuxXMLObject.clean()
