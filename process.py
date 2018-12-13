@@ -254,30 +254,102 @@ class Classifier :
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._datetime = datetime.now().strftime("%m%d_%H%M")
+        self._prepare_classif()
     
-    def classify (self):
-        gt = gpd.read_file(self._gt)
-        gt["my_id"] = pd.Series(np.arange(gt.shape[0]))
-        
-        lstClass = list(set(gt["Code2"].tolist())) #Code2
-        
-        lstEMP = glob.glob(os.path.join(self._inPath,"EMP")+os.sep+"*.tif")
-        lstEMP.sort()
+    def _prepare_classif(self) :
 
+        if not os.path.isdir(os.path.join(self._outPath,"DATA")):
+            os.makedirs(os.path.join(self._outPath,"DATA"))
+        
         lstSpectral = [os.path.join(self._inPath,"GAPF",File) for File in os.listdir(os.path.join(self._inPath,"GAPF")) if File.endswith("GAPF.tif")]
         lstSpectral.sort()
         lstSpectral.extend([os.path.join(self._inPath,"INDICES",File) for File in os.listdir(os.path.join(self._inPath,"INDICES")) if File.endswith("GAPF.tif")])
 
+        ds = gdal.Open(lstSpectral[0])
+        self._geoT = ds.GetGeoTransform()
+        self._proj = ds.GetProjection()
+        self._xsize = ds.RasterXSize
+        self._ysize = ds.RasterYSize
+        ds = None
+        
+        mem_drv = gdal.GetDriverByName("MEM")
+        gt_shp = ogr.Open(self._gt)
+        gt_layer = gt_shp.GetLayer()
+
+        dest1 = mem_drv.Create('', self._xsize, self._ysize, 1, gdal.GDT_Byte)
+        dest1.SetGeoTransform(self._geoT)
+        dest1.SetProjection(self._proj)
+        gdal.RasterizeLayer(dest1, [1], gt_layer, options=["ATTRIBUTE=Code2"]) #Code2
+        gt_rst = dest1.GetRasterBand(1).ReadAsArray()
+
+        dest2 =  mem_drv.Create('', self._xsize, self._ysize, 1, gdal.GDT_UInt16)
+        dest2.SetGeoTransform(self._geoT)
+        dest2.SetProjection(self._proj)
+        gdal.RasterizeLayer(dest2, [1], gt_layer, options=["ATTRIBUTE=ID"]) #ID
+        ID_rst  = dest2.GetRasterBand(1).ReadAsArray()
+
+        gt_shp = None
+        gt_layer = None
+        dest1 = None
+        dest2 = None
+        mem_drv = None
+
+        self._gt_indices = np.nonzero(gt_rst)
+        self._gt_labels = gt_rst[self._gt_indices]
+        self._gt_ID = ID_rst[self._gt_indices]
+
+        # EMP
+        self._emp_data = os.path.join(self._outPath,"DATA","emp_data.npy")
+        if not os.path.exists(self._emp_data) :
+            lstEMP = glob.glob(os.path.join(self._inPath,"EMP")+os.sep+"*.tif")
+            lstEMP.sort()
+            count = 0
+            for File in lstEMP :
+                with rasterio.open(File) as ds :
+                    count += ds.count
+            emp_samples = np.empty((self._gt_labels.shape[0],count))
+            count = 0
+            for File in lstEMP :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count):
+                        emp_samples[:,j+count] = ds.read(j+1)[self._gt_indices]
+                count += ds.count
+            np.save(self._emp_data,emp_samples)
+        
+        # Spectral data
+        self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
+        if not os.path.exists(self._spectral_data) :
+            count = 0
+            for File in lstSpectral :
+                with rasterio.open(File) as ds :
+                    count += ds.count
+            spectral_samples = np.empty((self._gt_labels.shape[0],count))
+            count = 0
+            for File in lstSpectral :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count):
+                        spectral_samples[:,j+count] = ds.read(j+1)[self._gt_indices]
+                count += ds.count
+            np.save(self._spectral_data,spectral_samples)
+
+    def classify (self):
+        
+        emp_data = np.load(self._emp_data)
+        spectral_data = np.load(self._spectral_data)
+
+        gt = gpd.read_file(self._gt)
+        lstClass = list(set(gt["Code2"].tolist())) #Code2
+
         outCSV = os.path.join(self._outPath,"classification_results_%s.csv"%self._datetime)
         outdic = {}
 
-        recover = True 
         for i in range(5): #5 iterations
             print ("Iteration %s"%(i+1))
+            
             train_ID = []
             test_ID = []
             for c in lstClass :
-                lstID = gt["my_id"][gt["Code2"] == c].tolist() #Code2
+                lstID = gt["ID"][gt["Code2"] == c].tolist() #Code2
                 random.shuffle(lstID)
                 random.shuffle(lstID)
                 train_ID.extend(lstID[:round(len(lstID)*0.7)]) #Train Test proportion 70%
@@ -285,138 +357,58 @@ class Classifier :
             
             if not os.path.isdir(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime)):
                 os.makedirs(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime))
-            train_df = gt[gt["my_id"].isin(train_ID)]
-            # train_shp = pd.DataFrame(data=train_df[["my_id","Code2","Niveau_2","geometry"]],columns=["ID","Code","Name","geometry"])
-            train_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
-            test_df = gt[gt["my_id"].isin(test_ID)]
-            # test_shp = pd.DataFrame(data=test_df[["my_id","Code2","Niveau_2","geometry"]],columns=["ID","Code","Name","geometry"])
-            test_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
-
-            if recover :
-                ds = gdal.Open(lstSpectral[0])
-                geoT = ds.GetGeoTransform()
-                proj = ds.GetProjection()
-                xsize = ds.RasterXSize
-                ysize = ds.RasterYSize
-            recover = False 
-
-            mem_drv = gdal.GetDriverByName("MEM")
-
-            train_shp = ogr.Open(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
-            train_layer = train_shp.GetLayer()
-            dest = mem_drv.Create('', xsize, ysize, 1, gdal.GDT_Byte)
-            dest.SetGeoTransform(geoT)
-            dest.SetProjection(proj)
-            gdal.RasterizeLayer(dest, [1], train_layer, options=["ATTRIBUTE=Code2"])
-            train_rst = dest.GetRasterBand(1).ReadAsArray()
-            dest = None
             
-            test_shp = ogr.Open(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
-            test_layer = test_shp.GetLayer()
-            dest = mem_drv.Create('', xsize, ysize, 1, gdal.GDT_Byte)
-            dest.SetGeoTransform(geoT)
-            dest.SetProjection(proj)
-            gdal.RasterizeLayer(dest, [1], test_layer, options=["ATTRIBUTE=Code2"])
-            test_rst = dest.GetRasterBand(1).ReadAsArray()
-            dest = None
-
-            # Training
-            train_indices = np.nonzero(train_rst)
-            train_labels = train_rst[train_indices]
+            train_df = gt[gt["ID"].isin(train_ID)]
+            train_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
+            
+            test_df = gt[gt["ID"].isin(test_ID)]
+            test_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
 
             if not os.path.isdir(os.path.join(self._outPath,"MODELS_%s"%self._datetime)):
                 os.makedirs(os.path.join(self._outPath,"MODELS_%s"%self._datetime))
 
-            # EMP
-            count = 0
-            for File in lstEMP :
-                with rasterio.open(File) as ds :
-                    count += ds.count
-            emp_train_samples = np.empty((train_labels.shape[0],count))
-            
-            for File in lstEMP :
-                with rasterio.open(File) as ds :
-                    for j in range(ds.count):
-                        emp_train_samples[:,j] = ds.read(j+1)[train_indices]
-                
+            # Training
+            train_ix = np.where(np.isin(self._gt_ID, train_ID))
+            train_labels = self._gt_labels[train_ix]
+
             # EMP Model
+            emp_train_samples = emp_data[train_ix]
             emp_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
             emp_model.fit(emp_train_samples,train_labels)
             joblib.dump(emp_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp_model_iteration%s.pkl'%(i+1)))
             # emp_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp_model_iteration%s.pkl'%(i+1)))
-
-
-            # Spectral Bands
-            count = 0
-            for File in lstSpectral :
-                with rasterio.open(File) as ds :
-                    count += ds.count
-            spectral_train_samples = np.empty((train_labels.shape[0],count))
-            
-            for File in lstSpectral :
-                with rasterio.open(File) as ds :
-                    for j in range(ds.count):
-                        spectral_train_samples[:,j] = ds.read(j+1)[train_indices]
             
             # Spectral Model
+            spectral_train_samples = spectral_data[train_ix]
             spectral_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
             spectral_model.fit(spectral_train_samples,train_labels)
             joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
             # spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
 
             # Testing
-            test_indices = np.nonzero(test_rst)
-            test_labels = test_rst[test_indices]
+            test_ix = np.where(np.isin(self._gt_ID, test_ID))
+            test_labels =  self._gt_labels[test_ix]
 
-            # EMP
-            count = 0
-            for File in lstEMP :
-                with rasterio.open(File) as ds :
-                    count += ds.count
-            emp_test_samples = np.empty((test_labels.shape[0],count))
-            
-            for File in lstEMP :
-                with rasterio.open(File) as ds :
-                    for j in range(ds.count):
-                        emp_test_samples[:,j] = ds.read(j+1)[test_indices]
-            
-            # Predict & Metrics
+            # Predict & Metrics EMP
+            emp_test_samples = emp_data[test_ix]
             emp_predict = emp_model.predict(emp_test_samples)
             outdic.setdefault('Iteration',[]).append(str(i+1))
             outdic.setdefault('Input',[]).append("EMP")
             outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp_predict))
             outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp_predict))
-            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp_predict,average='macro'))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp_predict,average='weighted'))
 
-            # Spectral Bands
-            count = 0
-            for File in lstSpectral :
-                with rasterio.open(File) as ds :
-                    count += ds.count
-            spectral_test_samples = np.empty((test_labels.shape[0],count))
-            
-            for File in lstSpectral :
-                with rasterio.open(File) as ds :
-                    for j in range(ds.count):
-                        spectral_test_samples[:,j] = ds.read(j+1)[test_indices]
-            
-            # Predict & Metrics
+            # Predict & Metrics Spectral Data
+            spectral_test_samples = spectral_data[test_ix]    
             spectral_predict = spectral_model.predict(spectral_test_samples)
             outdic.setdefault('Iteration',[]).append(str(i+1))
             outdic.setdefault('Input',[]).append("Spectral Bands")
             outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
             outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, spectral_predict))
-            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='macro'))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
         
         outdf = pd.DataFrame.from_dict(outdic)
         outdf.to_csv(outCSV, index=False)
-
-
-
-
-                
-
-
 
 if __name__ == '__main__':
 
@@ -449,7 +441,7 @@ if __name__ == '__main__':
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
-    ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/BD_GABIR_2017_v3.shp"
+    ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/BD_GABIR_2017_v3_ID.shp"
 
     CO = Classifier(inPath,ground_truth)
     CO.classify()
