@@ -219,6 +219,12 @@ class Morpho_Operation :
         
         lstFiles = glob.glob(os.path.join(self._outPath,Folder)+os.sep+"*.tif")
         lstFiles.sort()
+        pcaFiles = glob.glob(self._inPath+os.sep+"*.tif")
+        pcaFiles.sort()
+        for File in pcaFiles :
+            if re.match("{}_(.*)".format(os.path.basename(Folder).split("_")[0]),os.path.basename(File)):
+                lstFiles.append(File)
+                break
         outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP.tif"
         Command = ['otbcli_ConcatenateImages','-il']
         Command.extend(lstFiles)
@@ -484,7 +490,7 @@ if __name__ == '__main__':
     # REUNION
     # ========
 
-    # NDVI Computation
+    # NDVI
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/GAPF"
     # SIObject = Spectral_Indices(inPath)
     # SIObject.compute()
@@ -501,15 +507,25 @@ if __name__ == '__main__':
     # acp.check_pc(norm=False)
     # acp.save_pc()
 
+    acp = ACP(lstFiles,pvar=99)
+    # acp.check_pc(norm=True)
+    # acp.check_pc(norm=False)
+    # acp.save_pc()
+
     # EMP
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_95"
-    # morpho = Morpho_Operation(inPath)
-    # morpho.create_mp()
-    # morpho.create_emp()
+    morpho = Morpho_Operation(inPath)
+    morpho.create_mp()
+    morpho.create_emp()
+
+    inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_99"
+    morpho = Morpho_Operation(inPath)
+    morpho.create_mp()
+    morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
-    ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/BD_GABIR_2017_v3_ID.shp"
+    ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
 
     # CO = Classifier(inPath,ground_truth)
     # CO.classify()
@@ -519,7 +535,7 @@ if __name__ == '__main__':
     # DORDOGNE
     # ========
 
-    # NDVI Computation
+    # NDVI
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/GAPF"
     # SIObject = Spectral_Indices(inPath)
     # SIObject.compute()
@@ -531,15 +547,27 @@ if __name__ == '__main__':
             "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/GAPF/B8_DORDOGNE_CONCAT_S2_GAPF.tif",
             "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/INDICES/NDVI_DORDOGNE_CONCAT_S2_GAPF.tif"]
     
+    acp = ACP(lstFiles,pvar=95)
+    # acp.check_pc(norm=True)
+    # acp.check_pc(norm=False)
+    # acp.save_pc()
+    
     acp = ACP(lstFiles,pvar=99)
     # acp.check_pc(norm=True)
     # acp.check_pc(norm=False)
     # acp.save_pc()
 
     # EMP
+    inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_95"
+    morpho = Morpho_Operation(inPath)
+    morpho.create_mp()
+    morpho.create_emp()
+
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_99"
     morpho = Morpho_Operation(inPath)
     morpho.create_mp()
     morpho.create_emp()
 
     # Classification
+    inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
+    ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_NOROADS.shp"
