@@ -81,9 +81,10 @@ class ACP :
     Do Principal Components Analysis on (bands or Spectral indices) Time series
     """
 
-    def __init__(self,lstFiles,norm=False) :
+    def __init__(self,lstFiles,norm=False,pvar=90) :
         self._lstFiles = lstFiles
-        self._outPath = os.path.dirname(os.path.dirname(lstFiles[0])) + os.sep + "PCA"
+        self._pvar = pvar
+        self._outPath = os.path.dirname(os.path.dirname(lstFiles[0])) + os.sep + "PCA_%s"%self._pvar
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._norm = norm
@@ -143,7 +144,7 @@ class ACP :
         outdf = pd.DataFrame.from_dict(outdic)
         outdf.to_csv(outCSV , index=False)
 
-    def save_pc (self, pvar=90):
+    def save_pc (self):
         """
         Save Principal Components that keep (percent) of variance
         """
@@ -156,24 +157,26 @@ class ACP :
                     self._cols = ds.width
                     self._count = ds.count
                     self._profile = ds.profile
-                X = np.empty((self._rows, self._cols, self._count),dtype=ds.profile['dtype'])
+                X = None
                 for i in range (self._count):
-                    X[:,:,i] = ds.read(i+1)
+                    if X is None :
+                        X = ds.read(i+1).reshape(self._rows*self._cols)
+                    else :
+                        X = np.column_stack((X,ds.read(i+1).reshape(self._rows*self._cols)))
 
-            X = X.reshape(self._rows*self._cols,self._count)
             if self._norm :
                 X = StandardScaler().fit_transform(X)
 
             model1 = PCA(n_components=self._count)
             model1.fit_transform(X)
             prop = model1.explained_variance_ratio_.cumsum()
-            ncomp = np.where(prop>=pvar/100)[0][0]+1
+            ncomp = np.where(prop>=self._pvar/100)[0][0]+1
 
             model2 = PCA(n_components=ncomp)
             Z = model2.fit_transform(X)
             Z = Z.reshape(self._rows, self._cols,ncomp)
             
-            outFile = os.path.join(self._outPath,os.path.basename(inFile).replace("CONCAT_S2_GAPF.tif","PCA.tif"))
+            outFile = os.path.join(self._outPath,os.path.basename(inFile).replace("CONCAT_S2_GAPF.tif","PCA_%s.tif"%self._pvar))
             self._profile.update(nodata=None, count = ncomp, dtype=rasterio.dtypes.get_minimum_dtype(Z))
 
             with rasterio.open(outFile, 'w', **self._profile) as ds :
@@ -188,7 +191,7 @@ class Morpho_Operation :
     """
     def __init__(self, inPath, NUM_WORKERS=5):
         self._inPath = inPath
-        self._outPath = os.path.dirname(inPath)+os.sep+"EMP"
+        self._outPath = os.path.dirname(inPath)+os.sep+"EMP_%s"%os.path.basename(inPath).split('_')[-1]
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._NUM_WORKERS = NUM_WORKERS
@@ -247,10 +250,11 @@ class Morpho_Operation :
         print("Time for process : %ssecs" % (end_time - start_time))
 
 class Classifier :
-    def __init__(self,inPath,ground_truth):
+    def __init__(self,inPath,ground_truth,pca=95):
         self._inPath = inPath
         self._gt = ground_truth
-        self._outPath = os.path.join(inPath,"CLASSIF")
+        self._pca = pca
+        self._outPath = os.path.join(inPath,"CLASSIF_%s"%self._pca)
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._datetime = datetime.now().strftime("%m%d_%H%M")
@@ -296,51 +300,58 @@ class Classifier :
 
         self._gt_indices = np.nonzero(gt_rst)
         self._gt_labels = gt_rst[self._gt_indices]
+        if not os.path.exists(os.path.join(self._outPath,"DATA","gt_labels.npy")) :
+            np.save(os.path.join(self._outPath,"DATA","gt_labels.npy"),self._gt_labels)
         self._gt_ID = ID_rst[self._gt_indices]
+        if not os.path.exists(os.path.join(self._outPath,"DATA","gt_id.npy")) :
+            np.save(os.path.join(self._outPath,"DATA","gt_id.npy"),self._gt_ID)
 
-        # EMP
+        # EMP & PCA
         self._emp_data = os.path.join(self._outPath,"DATA","emp_data.npy")
         if not os.path.exists(self._emp_data) :
-            lstEMP = glob.glob(os.path.join(self._inPath,"EMP")+os.sep+"*.tif")
+            lstEMP = glob.glob(os.path.join(self._inPath,"EMP_%s"%self._pca)+os.sep+"*.tif")
+            # lstEMP.extend(glob.glob(os.path.join(self._inPath,"PCA_%s"%self._pca)+os.sep+"*.tif"))
+            # lstEMP = glob.glob(os.path.join(self._inPath,"PCA_%s"%self._pca)+os.sep+"*.tif")
             lstEMP.sort()
-            count = 0
+            emp_samples = None
             for File in lstEMP :
                 with rasterio.open(File) as ds :
-                    count += ds.count
-            emp_samples = np.empty((self._gt_labels.shape[0],count))
-            count = 0
-            for File in lstEMP :
-                with rasterio.open(File) as ds :
-                    for j in range(ds.count):
-                        emp_samples[:,j+count] = ds.read(j+1)[self._gt_indices]
-                count += ds.count
+                    for j in range(ds.count) :
+                        if emp_samples is None :
+                            emp_samples = ds.read(j+1)[self._gt_indices]
+                        else :
+                            emp_samples = np.column_stack((emp_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp_data,emp_samples)
         
         # Spectral data
         self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
         if not os.path.exists(self._spectral_data) :
-            count = 0
-            for File in lstSpectral :
-                with rasterio.open(File) as ds :
-                    count += ds.count
-            spectral_samples = np.empty((self._gt_labels.shape[0],count))
-            count = 0
+            spectral_samples = None
             for File in lstSpectral :
                 with rasterio.open(File) as ds :
                     for j in range(ds.count):
-                        spectral_samples[:,j+count] = ds.read(j+1)[self._gt_indices]
-                count += ds.count
+                        if spectral_samples is None :
+                            spectral_samples = ds.read(j+1)[self._gt_indices]
+                        else :
+                            spectral_samples = np.column_stack((spectral_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._spectral_data,spectral_samples)
 
     def classify (self):
         
         emp_data = np.load(self._emp_data)
         spectral_data = np.load(self._spectral_data)
+        total_data = np.column_stack((emp_data,spectral_data))
 
         gt = gpd.read_file(self._gt)
-        lstClass = list(set(gt["Code2"].tolist())) #Code2
+        dicClass = gt.groupby(["Code2"])["Niveau_2"].unique().to_dict() #Code2 Niveau_2
+        lstClass = list(dicClass.keys())
 
-        outCSV = os.path.join(self._outPath,"classification_results_%s.csv"%self._datetime)
+        if not os.path.isdir(os.path.join(self._outPath,"MODELS_%s"%self._datetime)):
+            os.makedirs(os.path.join(self._outPath,"MODELS_%s"%self._datetime))
+        if not os.path.isdir(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime)):
+            os.makedirs(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime))
+
+        outCSV = os.path.join(self._outPath,"results_summary_%s.csv"%self._datetime)
         outdic = {}
 
         for i in range(5): #5 iterations
@@ -355,17 +366,11 @@ class Classifier :
                 train_ID.extend(lstID[:round(len(lstID)*0.7)]) #Train Test proportion 70%
                 test_ID.extend(lstID[round(len(lstID)*0.7):])
             
-            if not os.path.isdir(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime)):
-                os.makedirs(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime))
-            
             train_df = gt[gt["ID"].isin(train_ID)]
             train_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
             
             test_df = gt[gt["ID"].isin(test_ID)]
             test_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
-
-            if not os.path.isdir(os.path.join(self._outPath,"MODELS_%s"%self._datetime)):
-                os.makedirs(os.path.join(self._outPath,"MODELS_%s"%self._datetime))
 
             # Training
             train_ix = np.where(np.isin(self._gt_ID, train_ID))
@@ -385,30 +390,93 @@ class Classifier :
             joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
             # spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
 
+            # EMP + Spectral Bands Model
+            total_train_samples = total_data[train_ix]
+            total_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+            total_model.fit(total_train_samples,train_labels)
+            joblib.dump(total_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp+spectral_model_iteration%s.pkl'%(i+1)))
+            # total_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp+spectral_model_iteration%s.pkl'%(i+1)))
+           
             # Testing
             test_ix = np.where(np.isin(self._gt_ID, test_ID))
             test_labels =  self._gt_labels[test_ix]
 
             # Predict & Metrics EMP
             emp_test_samples = emp_data[test_ix]
-            emp_predict = emp_model.predict(emp_test_samples)
-            outdic.setdefault('Iteration',[]).append(str(i+1))
+            emp_predict = emp_model.predict(emp_test_samples) 
             outdic.setdefault('Input',[]).append("EMP")
-            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp_predict))
             outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp_predict))
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp_predict,average='weighted'))
+            emp_per_class = f1_score(test_labels, emp_predict,average=None)
 
             # Predict & Metrics Spectral Data
             spectral_test_samples = spectral_data[test_ix]    
             spectral_predict = spectral_model.predict(spectral_test_samples)
-            outdic.setdefault('Iteration',[]).append(str(i+1))
             outdic.setdefault('Input',[]).append("Spectral Bands")
-            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
             outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, spectral_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
+            spectral_per_class = f1_score(test_labels, spectral_predict,average=None)
+
+            # Predict & Metrics EMP + Spectral Data
+            total_test_samples = total_data[test_ix]
+            total_predict = total_model.predict(total_test_samples)
+            outdic.setdefault('Input',[]).append("EMP + Spectral Bands")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total_predict,average='weighted'))
+            total_per_class = f1_score(test_labels, total_predict,average=None)
+
+            print ("EMP | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*3],3),round(outdic['Kappa Coefficient'][i*3],3),round(outdic['F-Measure'][i*3],3)))
+            
+            print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*3+1],3),round(outdic['Kappa Coefficient'][i*3+1],3),round(outdic['F-Measure'][i*3+1],3)))
+            
+            print ("EMP + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
+                round(outdic['Overall Accuracy'][i*3+2],3),round(outdic['Kappa Coefficient'][i*3+2],3),round(outdic['F-Measure'][i*3+2],3)))
         
+        # outdf.to_csv(outCSV, index=False)
         outdf = pd.DataFrame.from_dict(outdic)
-        outdf.to_csv(outCSV, index=False)
+        mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
+        std_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].std()
+        df1 = pd.DataFrame({'Input': ["EMP", "Spectral Bands", "EMP + Spectral Bands",""],
+                    'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP']['Overall Accuracy'],3),round(std_df.loc['EMP']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3)),
+                                         ""],
+                                         
+                    'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP']['Kappa Coefficient'],3),round(std_df.loc['EMP']['Kappa Coefficient'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3)),
+                                         ""],
+                    'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP']['Overall Accuracy'],3),round(std_df.loc['EMP']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP + Spectral Bands']['F-Measure'],3)),
+                                         ""]})
+        df1.to_csv(outCSV, index=False)
+
+        dic2 = {}
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp_per_class[v],3))
+        dic2.setdefault('Per Class F-Measure',[]).append("Spectral Bands")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(spectral_per_class[v],3))
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP + Spectral Bands")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(total_per_class[v],3))
+        dic2.setdefault('Per Class F-Measure',[]).append("")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append("")
+            
+        df2 = pd.DataFrame.from_dict(dic2)
+        df2.to_csv(outCSV, mode ='a', index=False)
+
+        df3 = pd.DataFrame({'Class': [str(v+1) for v in range(len(list(dicClass.values())))],
+                            'Name' : [dicClass[v+1][0] for v in range(len(list(dicClass.values())))]})
+        df3.to_csv(outCSV, mode='a', index=False)
 
 if __name__ == '__main__':
 
@@ -428,13 +496,13 @@ if __name__ == '__main__':
                 "/media/je/SATA_1/Lab1/REUNION/OUTPUT/GAPF/B8_REUNION_CONCAT_S2_GAPF.tif",
                 "/media/je/SATA_1/Lab1/REUNION/OUTPUT/INDICES/NDVI_REUNION_CONCAT_S2_GAPF.tif"]
     
-    # acp = ACP(lstFiles)
+    acp = ACP(lstFiles,pvar=95)
     # acp.check_pc(norm=True)
     # acp.check_pc(norm=False)
     # acp.save_pc()
 
     # EMP
-    inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA"
+    inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_95"
     # morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
     # morpho.create_emp()
@@ -443,8 +511,8 @@ if __name__ == '__main__':
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/BD_GABIR_2017_v3_ID.shp"
 
-    CO = Classifier(inPath,ground_truth)
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth)
+    # CO.classify()
 
 
     # ========
@@ -463,15 +531,15 @@ if __name__ == '__main__':
             "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/GAPF/B8_DORDOGNE_CONCAT_S2_GAPF.tif",
             "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/INDICES/NDVI_DORDOGNE_CONCAT_S2_GAPF.tif"]
     
-    # acp = ACP(lstFiles)
+    acp = ACP(lstFiles,pvar=99)
     # acp.check_pc(norm=True)
     # acp.check_pc(norm=False)
     # acp.save_pc()
 
     # EMP
-    inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA"
-    # morpho = Morpho_Operation(inPath)
-    # morpho.create_mp()
-    # morpho.create_emp()
+    inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_99"
+    morpho = Morpho_Operation(inPath)
+    morpho.create_mp()
+    morpho.create_emp()
 
     # Classification
