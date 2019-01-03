@@ -24,7 +24,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.externals import joblib
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, cohen_kappa_score, f1_score
+from sklearn.metrics import confusion_matrix, accuracy_score, cohen_kappa_score, f1_score
+import matplotlib.pyplot as plt 
 
 class Spectral_Indices :
     """
@@ -256,11 +257,10 @@ class Morpho_Operation :
         print("Time for process : %ssecs" % (end_time - start_time))
 
 class Classifier :
-    def __init__(self,inPath,ground_truth,pca=95):
+    def __init__(self,inPath,ground_truth):
         self._inPath = inPath
         self._gt = ground_truth
-        self._pca = pca
-        self._outPath = os.path.join(inPath,"CLASSIF_%s"%self._pca)
+        self._outPath = os.path.join(inPath,"CLASSIF")
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._datetime = datetime.now().strftime("%m%d_%H%M")
@@ -289,13 +289,13 @@ class Classifier :
         dest1 = mem_drv.Create('', self._xsize, self._ysize, 1, gdal.GDT_Byte)
         dest1.SetGeoTransform(self._geoT)
         dest1.SetProjection(self._proj)
-        gdal.RasterizeLayer(dest1, [1], gt_layer, options=["ATTRIBUTE=Code2"]) #Code2
+        gdal.RasterizeLayer(dest1, [1], gt_layer, options=["ATTRIBUTE=Code"])
         gt_rst = dest1.GetRasterBand(1).ReadAsArray()
 
         dest2 =  mem_drv.Create('', self._xsize, self._ysize, 1, gdal.GDT_UInt16)
         dest2.SetGeoTransform(self._geoT)
         dest2.SetProjection(self._proj)
-        gdal.RasterizeLayer(dest2, [1], gt_layer, options=["ATTRIBUTE=ID"]) #ID
+        gdal.RasterizeLayer(dest2, [1], gt_layer, options=["ATTRIBUTE=ID"])
         ID_rst  = dest2.GetRasterBand(1).ReadAsArray()
 
         gt_shp = None
@@ -312,22 +312,34 @@ class Classifier :
         if not os.path.exists(os.path.join(self._outPath,"DATA","gt_id.npy")) :
             np.save(os.path.join(self._outPath,"DATA","gt_id.npy"),self._gt_ID)
 
-        # EMP & PCA
-        self._emp_data = os.path.join(self._outPath,"DATA","emp_data.npy")
-        if not os.path.exists(self._emp_data) :
-            lstEMP = glob.glob(os.path.join(self._inPath,"EMP_%s"%self._pca)+os.sep+"*.tif")
-            # lstEMP.extend(glob.glob(os.path.join(self._inPath,"PCA_%s"%self._pca)+os.sep+"*.tif"))
-            # lstEMP = glob.glob(os.path.join(self._inPath,"PCA_%s"%self._pca)+os.sep+"*.tif")
-            lstEMP.sort()
-            emp_samples = None
-            for File in lstEMP :
+        # EMP
+        self._emp95_data = os.path.join(self._outPath,"DATA","emp95_data.npy")
+        if not os.path.exists(self._emp95_data) :
+            lstEMP95 = glob.glob(os.path.join(self._inPath,"EMP_95")+os.sep+"*.tif")
+            lstEMP95.sort()
+            emp95_samples = None
+            for File in lstEMP95 :
                 with rasterio.open(File) as ds :
                     for j in range(ds.count) :
-                        if emp_samples is None :
-                            emp_samples = ds.read(j+1)[self._gt_indices]
+                        if emp95_samples is None :
+                            emp95_samples = ds.read(j+1)[self._gt_indices]
                         else :
-                            emp_samples = np.column_stack((emp_samples,ds.read(j+1)[self._gt_indices]))
-            np.save(self._emp_data,emp_samples)
+                            emp95_samples = np.column_stack((emp95_samples,ds.read(j+1)[self._gt_indices]))
+            np.save(self._emp95_data,emp95_samples)
+        
+        self._emp99_data = os.path.join(self._outPath,"DATA","emp99_data.npy")
+        if not os.path.exists(self._emp99_data) :
+            lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*.tif")
+            lstEMP99.sort()
+            emp99_samples = None
+            for File in lstEMP99 :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count) :
+                        if emp99_samples is None :
+                            emp99_samples = ds.read(j+1)[self._gt_indices]
+                        else :
+                            emp99_samples = np.column_stack((emp99_samples,ds.read(j+1)[self._gt_indices]))
+            np.save(self._emp99_data,emp99_samples)
         
         # Spectral data
         self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
@@ -343,14 +355,16 @@ class Classifier :
             np.save(self._spectral_data,spectral_samples)
 
     def classify (self):
-        
-        emp_data = np.load(self._emp_data)
+        emp95_data = np.load(self._emp95_data)
+        emp99_data = np.load(self._emp99_data)
         spectral_data = np.load(self._spectral_data)
-        total_data = np.column_stack((emp_data,spectral_data))
+        total95_data = np.column_stack((emp95_data,spectral_data))
+        total99_data = np.column_stack((emp99_data,spectral_data))
 
         gt = gpd.read_file(self._gt)
-        dicClass = gt.groupby(["Code2"])["Niveau_2"].unique().to_dict() #Code2 Niveau_2
+        dicClass = gt.groupby(["Code"])["Name"].unique().to_dict()
         lstClass = list(dicClass.keys())
+        dicCount = gt.groupby(["Code"])["Code"].count().to_dict()
 
         if not os.path.isdir(os.path.join(self._outPath,"MODELS_%s"%self._datetime)):
             os.makedirs(os.path.join(self._outPath,"MODELS_%s"%self._datetime))
@@ -366,7 +380,7 @@ class Classifier :
             train_ID = []
             test_ID = []
             for c in lstClass :
-                lstID = gt["ID"][gt["Code2"] == c].tolist() #Code2
+                lstID = gt["ID"][gt["Code"] == c].tolist()
                 random.shuffle(lstID)
                 random.shuffle(lstID)
                 train_ID.extend(lstID[:round(len(lstID)*0.7)]) #Train Test proportion 70%
@@ -383,12 +397,20 @@ class Classifier :
             train_labels = self._gt_labels[train_ix]
 
             # EMP Model
-            emp_train_samples = emp_data[train_ix]
-            emp_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            emp_model.fit(emp_train_samples,train_labels)
-            joblib.dump(emp_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp_model_iteration%s.pkl'%(i+1)))
-            # emp_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp_model_iteration%s.pkl'%(i+1)))
+            # 95
+            emp95_train_samples = emp95_data[train_ix]
+            emp95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+            emp95_model.fit(emp95_train_samples,train_labels)
+            joblib.dump(emp95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
+            # emp95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1)))
             
+            # 99
+            emp99_train_samples = emp99_data[train_ix]
+            emp99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+            emp99_model.fit(emp99_train_samples,train_labels)
+            joblib.dump(emp99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
+            # emp99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1)))
+
             # Spectral Model
             spectral_train_samples = spectral_data[train_ix]
             spectral_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
@@ -397,24 +419,44 @@ class Classifier :
             # spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
 
             # EMP + Spectral Bands Model
-            total_train_samples = total_data[train_ix]
-            total_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            total_model.fit(total_train_samples,train_labels)
-            joblib.dump(total_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp+spectral_model_iteration%s.pkl'%(i+1)))
-            # total_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp+spectral_model_iteration%s.pkl'%(i+1)))
+            # 95
+            total95_train_samples = total95_data[train_ix]
+            total95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+            total95_model.fit(total95_train_samples,train_labels)
+            joblib.dump(total95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+            # total95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+
+            # 99
+            total99_train_samples = total99_data[train_ix]
+            total99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+            total99_model.fit(total99_train_samples,train_labels)
+            joblib.dump(total99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+            # total99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99+spectral_model_iteration%s.pkl'%(i+1)))
            
             # Testing
             test_ix = np.where(np.isin(self._gt_ID, test_ID))
             test_labels =  self._gt_labels[test_ix]
 
             # Predict & Metrics EMP
-            emp_test_samples = emp_data[test_ix]
-            emp_predict = emp_model.predict(emp_test_samples) 
-            outdic.setdefault('Input',[]).append("EMP")
-            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp_predict))
-            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp_predict))
-            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp_predict,average='weighted'))
-            emp_per_class = f1_score(test_labels, emp_predict,average=None)
+            # 95
+            emp95_test_samples = emp95_data[test_ix]
+            emp95_predict = emp95_model.predict(emp95_test_samples) 
+            outdic.setdefault('Input',[]).append("EMP95")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp95_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp95_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp95_predict,average='weighted'))
+            emp95_per_class = f1_score(test_labels, emp95_predict,average=None)
+            # emp95_cm = confusion_matrix(test_labels, emp95_predict)
+
+            # 99
+            emp99_test_samples = emp99_data[test_ix]
+            emp99_predict = emp99_model.predict(emp99_test_samples) 
+            outdic.setdefault('Input',[]).append("EMP99")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp99_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp99_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp99_predict,average='weighted'))
+            emp99_per_class = f1_score(test_labels, emp99_predict,average=None)
+            # emp99_cm = confusion_matrix(test_labels, emp99_predict)
 
             # Predict & Metrics Spectral Data
             spectral_test_samples = spectral_data[test_ix]    
@@ -424,55 +466,91 @@ class Classifier :
             outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
             spectral_per_class = f1_score(test_labels, spectral_predict,average=None)
+            # spectral_cm = confusion_matrix(test_labels, spectral_predict)
 
             # Predict & Metrics EMP + Spectral Data
-            total_test_samples = total_data[test_ix]
-            total_predict = total_model.predict(total_test_samples)
-            outdic.setdefault('Input',[]).append("EMP + Spectral Bands")
-            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total_predict))
-            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total_predict))
-            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total_predict,average='weighted'))
-            total_per_class = f1_score(test_labels, total_predict,average=None)
+            # 95
+            total95_test_samples = total95_data[test_ix]
+            total95_predict = total95_model.predict(total95_test_samples)
+            outdic.setdefault('Input',[]).append("EMP95 + Spectral Bands")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total95_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total95_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total95_predict,average='weighted'))
+            total95_per_class = f1_score(test_labels, total95_predict,average=None)
+            # total95_cm = confusion_matrix(test_labels, total95_predict)
 
-            print ("EMP | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*3],3),round(outdic['Kappa Coefficient'][i*3],3),round(outdic['F-Measure'][i*3],3)))
+            # 99
+            total99_test_samples = total99_data[test_ix]
+            total99_predict = total99_model.predict(total99_test_samples)
+            outdic.setdefault('Input',[]).append("EMP99 + Spectral Bands")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total99_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total99_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total99_predict,average='weighted'))
+            total99_per_class = f1_score(test_labels, total99_predict,average=None)
+            # total99_cm = confusion_matrix(test_labels, total99_predict)
+
+            print ("EMP95 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*5],3),round(outdic['Kappa Coefficient'][i*5],3),round(outdic['F-Measure'][i*5],3)))
+            
+            print ("EMP99 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*5+1],3),round(outdic['Kappa Coefficient'][i*5+1],3),round(outdic['F-Measure'][i*5+1],3)))
             
             print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*3+1],3),round(outdic['Kappa Coefficient'][i*3+1],3),round(outdic['F-Measure'][i*3+1],3)))
+                round(outdic['Overall Accuracy'][i*5+2],3),round(outdic['Kappa Coefficient'][i*5+2],3),round(outdic['F-Measure'][i*5+2],3)))
             
-            print ("EMP + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
-                round(outdic['Overall Accuracy'][i*3+2],3),round(outdic['Kappa Coefficient'][i*3+2],3),round(outdic['F-Measure'][i*3+2],3)))
+            print ("EMP95 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
+                round(outdic['Overall Accuracy'][i*5+3],3),round(outdic['Kappa Coefficient'][i*5+3],3),round(outdic['F-Measure'][i*5+3],3)))
+            
+            print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
+                round(outdic['Overall Accuracy'][i*5+4],3),round(outdic['Kappa Coefficient'][i*5+4],3),round(outdic['F-Measure'][i*5+4],3)))
         
         # outdf.to_csv(outCSV, index=False)
         outdf = pd.DataFrame.from_dict(outdic)
         mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
         std_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].std()
-        df1 = pd.DataFrame({'Input': ["EMP", "Spectral Bands", "EMP + Spectral Bands",""],
-                    'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP']['Overall Accuracy'],3),round(std_df.loc['EMP']['Overall Accuracy'],3)),
+        df1 = pd.DataFrame({'Input': ["EMP95", "EMP99", "Spectral Bands", "EMP95 + Spectral Bands","EMP99 + Spectral Bands",""],
+                    'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP95']['Overall Accuracy'],3),round(std_df.loc['EMP95']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP99']['Overall Accuracy'],3),round(std_df.loc['EMP99']['Overall Accuracy'],3)),
                                          "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['Spectral Bands']['Overall Accuracy'],3)),
-                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
                                          ""],
                                          
-                    'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP']['Kappa Coefficient'],3),round(std_df.loc['EMP']['Kappa Coefficient'],3)),
-                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
-                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP + Spectral Bands']['Overall Accuracy'],3)),
-                                         ""],
-                    'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP']['Overall Accuracy'],3),round(std_df.loc['EMP']['Overall Accuracy'],3)),
-                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
-                                         "%s +/- %s"%(round(mean_df.loc['EMP + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP + Spectral Bands']['F-Measure'],3)),
-                                         ""]})
+                    'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP95']['Kappa Coefficient'],3),round(std_df.loc['EMP95']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['EMP99']['Kappa Coefficient'],3),round(std_df.loc['EMP99']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
+                                          ""],
+                    'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP95']['F-Measure'],3),round(std_df.loc['EMP95']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP99']['F-Measure'],3),round(std_df.loc['EMP99']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP95 + Spectral Bands']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP99 + Spectral Bands']['F-Measure'],3)),
+                                   ""]})
         df1.to_csv(outCSV, index=False)
 
         dic2 = {}
-        dic2.setdefault('Per Class F-Measure',[]).append("EMP")
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP95")
         for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp_per_class[v],3))
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp95_per_class[v],3))
+        
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP99")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp99_per_class[v],3))
+
         dic2.setdefault('Per Class F-Measure',[]).append("Spectral Bands")
         for v in range (len(list(dicClass.values()))):
             dic2.setdefault('Class %s'%(v+1),[]).append(round(spectral_per_class[v],3))
-        dic2.setdefault('Per Class F-Measure',[]).append("EMP + Spectral Bands")
+
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP95 + Spectral Bands")
         for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(total_per_class[v],3))
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(total95_per_class[v],3))
+        
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP99 + Spectral Bands")
+        for v in range (len(list(dicClass.values()))):
+            dic2.setdefault('Class %s'%(v+1),[]).append(round(total99_per_class[v],3))
+
         dic2.setdefault('Per Class F-Measure',[]).append("")
         for v in range (len(list(dicClass.values()))):
             dic2.setdefault('Class %s'%(v+1),[]).append("")
@@ -480,9 +558,16 @@ class Classifier :
         df2 = pd.DataFrame.from_dict(dic2)
         df2.to_csv(outCSV, mode ='a', index=False)
 
-        df3 = pd.DataFrame({'Class': [str(v+1) for v in range(len(list(dicClass.values())))],
-                            'Name' : [dicClass[v+1][0] for v in range(len(list(dicClass.values())))]})
+        df3 = pd.DataFrame({'Class': [str(v+1) for v in range(len(dicClass))],
+                            'Name' : [dicClass[v+1][0] for v in range(len(dicClass))],
+                            'Count': [dicCount[v+1] for v in range(len(dicCount))]
+                            })
         df3.to_csv(outCSV, mode='a', index=False)
+
+    # def _plot_cm (self,cm,normalize=True,cmap=plt.cm.plasma) :
+    #     if normalize:
+    #         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    #     plt.imshow(cm,interpolation='nearest', cmap=cmap)
 
 if __name__ == '__main__':
 
