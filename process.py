@@ -599,21 +599,20 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_95"
-    morpho = Morpho_Operation(inPath)
-    morpho.create_mp()
-    morpho.create_emp()
+    # morpho = Morpho_Operation(inPath)
+    # morpho.create_mp()
+    # morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_99"
-    morpho = Morpho_Operation(inPath)
-    morpho.create_mp()
-    morpho.create_emp()
+    # morpho = Morpho_Operation(inPath)
+    # morpho.create_mp()
+    # morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-
-    # CO = Classifier(inPath,ground_truth)
-    # CO.classify()
+    CO = Classifier(inPath,ground_truth)
+    CO.classify()
 
 
     # ========
@@ -644,15 +643,17 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_95"
-    morpho = Morpho_Operation(inPath)
-    morpho.create_mp()
-    morpho.create_emp()
+    # morpho = Morpho_Operation(inPath)
+    # morpho.create_mp()
+    # morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_99"
-    morpho = Morpho_Operation(inPath)
-    morpho.create_mp()
-    morpho.create_emp()
+    # morpho = Morpho_Operation(inPath)
+    # morpho.create_mp()
+    # morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_NOROADS.shp"
+    CO = Classifier(inPath,ground_truth)
+    CO.classify()
