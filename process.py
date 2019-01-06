@@ -622,8 +622,8 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-    CO = Classifier(inPath,ground_truth)
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth)
+    # CO.classify()
 
 
     # ========
@@ -665,6 +665,6 @@ if __name__ == '__main__':
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
-    ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_NOROADS.shp"
+    ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
     CO = Classifier(inPath,ground_truth)
     CO.classify()
