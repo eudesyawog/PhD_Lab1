@@ -257,13 +257,14 @@ class Morpho_Operation :
         print("Time for process : %ssecs" % (end_time - start_time))
 
 class Classifier :
-    def __init__(self,inPath,ground_truth):
+    def __init__(self,inPath,ground_truth,niter=5):
         self._inPath = inPath
         self._gt = ground_truth
         self._outPath = os.path.join(inPath,"CLASSIF")
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
         self._datetime = datetime.now().strftime("%m%d_%H%M")
+        self._niter = niter
         self._prepare_classif()
     
     def _prepare_classif(self) :
@@ -374,7 +375,7 @@ class Classifier :
         outCSV = os.path.join(self._outPath,"results_summary_%s.csv"%self._datetime)
         outdic = {}
 
-        for i in range(5): #5 iterations
+        for i in range(self._niter):
             print ("Iteration %s"%(i+1))
             
             train_ID = []
@@ -403,6 +404,7 @@ class Classifier :
             emp95_model.fit(emp95_train_samples,train_labels)
             joblib.dump(emp95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
             # emp95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1)))
+            emp95_train_samples = None
             
             # 99
             emp99_train_samples = emp99_data[train_ix]
@@ -410,6 +412,7 @@ class Classifier :
             emp99_model.fit(emp99_train_samples,train_labels)
             joblib.dump(emp99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
             # emp99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1)))
+            emp99_train_samples = None
 
             # Spectral Model
             spectral_train_samples = spectral_data[train_ix]
@@ -417,6 +420,7 @@ class Classifier :
             spectral_model.fit(spectral_train_samples,train_labels)
             joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
             # spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
+            spectral_train_samples = None
 
             # EMP + Spectral Bands Model
             # 95
@@ -425,6 +429,7 @@ class Classifier :
             total95_model.fit(total95_train_samples,train_labels)
             joblib.dump(total95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
             # total95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+            total95_train_samples = None
 
             # 99
             total99_train_samples = total99_data[train_ix]
@@ -432,6 +437,7 @@ class Classifier :
             total99_model.fit(total99_train_samples,train_labels)
             joblib.dump(total99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             # total99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+            total99_train_samples = None
            
             # Testing
             test_ix = np.where(np.isin(self._gt_ID, test_ID))
@@ -447,6 +453,7 @@ class Classifier :
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp95_predict,average='weighted'))
             emp95_per_class = f1_score(test_labels, emp95_predict,average=None)
             # emp95_cm = confusion_matrix(test_labels, emp95_predict)
+            emp95_test_samples = None
 
             # 99
             emp99_test_samples = emp99_data[test_ix]
@@ -457,6 +464,7 @@ class Classifier :
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp99_predict,average='weighted'))
             emp99_per_class = f1_score(test_labels, emp99_predict,average=None)
             # emp99_cm = confusion_matrix(test_labels, emp99_predict)
+            emp99_test_samples = None
 
             # Predict & Metrics Spectral Data
             spectral_test_samples = spectral_data[test_ix]    
@@ -467,6 +475,7 @@ class Classifier :
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
             spectral_per_class = f1_score(test_labels, spectral_predict,average=None)
             # spectral_cm = confusion_matrix(test_labels, spectral_predict)
+            spectral_test_samples = None
 
             # Predict & Metrics EMP + Spectral Data
             # 95
@@ -478,6 +487,7 @@ class Classifier :
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total95_predict,average='weighted'))
             total95_per_class = f1_score(test_labels, total95_predict,average=None)
             # total95_cm = confusion_matrix(test_labels, total95_predict)
+            total95_test_samples = None
 
             # 99
             total99_test_samples = total99_data[test_ix]
@@ -488,6 +498,7 @@ class Classifier :
             outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total99_predict,average='weighted'))
             total99_per_class = f1_score(test_labels, total99_predict,average=None)
             # total99_cm = confusion_matrix(test_labels, total99_predict)
+            total99_test_samples = None
 
             print ("EMP95 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
                 round(outdic['Overall Accuracy'][i*5],3),round(outdic['Kappa Coefficient'][i*5],3),round(outdic['F-Measure'][i*5],3)))
@@ -498,7 +509,7 @@ class Classifier :
             print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
                 round(outdic['Overall Accuracy'][i*5+2],3),round(outdic['Kappa Coefficient'][i*5+2],3),round(outdic['F-Measure'][i*5+2],3)))
             
-            print ("EMP95 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
+            print ("EMP95 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
                 round(outdic['Overall Accuracy'][i*5+3],3),round(outdic['Kappa Coefficient'][i*5+3],3),round(outdic['F-Measure'][i*5+3],3)))
             
             print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
