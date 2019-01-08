@@ -543,35 +543,35 @@ class Classifier :
 
         dic2 = {}
         dic2.setdefault('Per Class F-Measure',[]).append("EMP95")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp95_per_class[v],3))
-        
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(emp95_per_class[v],3))
+
         dic2.setdefault('Per Class F-Measure',[]).append("EMP99")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(emp99_per_class[v],3))
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(emp99_per_class[v],3))
 
         dic2.setdefault('Per Class F-Measure',[]).append("Spectral Bands")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(spectral_per_class[v],3))
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(spectral_per_class[v],3))
 
         dic2.setdefault('Per Class F-Measure',[]).append("EMP95 + Spectral Bands")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(total95_per_class[v],3))
-        
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(total95_per_class[v],3))
+
         dic2.setdefault('Per Class F-Measure',[]).append("EMP99 + Spectral Bands")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append(round(total99_per_class[v],3))
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(total99_per_class[v],3))
 
         dic2.setdefault('Per Class F-Measure',[]).append("")
-        for v in range (len(list(dicClass.values()))):
-            dic2.setdefault('Class %s'%(v+1),[]).append("")
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append("")
             
         df2 = pd.DataFrame.from_dict(dic2)
         df2.to_csv(outCSV, mode ='a', index=False)
 
-        df3 = pd.DataFrame({'Class': [str(v+1) for v in range(len(dicClass))],
-                            'Name' : [dicClass[v+1][0] for v in range(len(dicClass))],
-                            'Count': [dicCount[v+1] for v in range(len(dicCount))]
+        df3 = pd.DataFrame({'Class': [str(v) for v in list(dicClass.keys())],
+                            'Name' : [dicClass[v][0] for v in list(dicClass.keys())],
+                            'Count': [dicCount[v] for v in list(dicClass.keys())]
                             })
         df3.to_csv(outCSV, mode='a', index=False)
 
