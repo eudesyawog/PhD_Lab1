@@ -369,7 +369,7 @@ class Classifier :
                         if emp_pca95_samples is None :
                             emp_pca95_samples = ds.read(j+1)[self._gt_indices]
                         else :
-                            emp_pca95_samples = np.column_stack((emp95_samples,ds.read(j+1)[self._gt_indices]))
+                            emp_pca95_samples = np.column_stack((emp_pca95_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp_pca95_data,emp_pca95_samples)
             emp_pca95_samples = None
         
@@ -384,7 +384,7 @@ class Classifier :
                         if emp_pca99_samples is None :
                             emp_pca99_samples = ds.read(j+1)[self._gt_indices]
                         else :
-                            emp_pca99_samples = np.column_stack((emp99_samples,ds.read(j+1)[self._gt_indices]))
+                            emp_pca99_samples = np.column_stack((emp_pca99_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp_pca99_data,emp_pca99_samples)
             emp_pca99_samples = None
         
