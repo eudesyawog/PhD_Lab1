@@ -458,74 +458,74 @@ class Classifier :
 
             # EMP Models
             # 95
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1))):
                 emp95_train_samples = emp95_data[train_ix]
                 emp95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 emp95_model.fit(emp95_train_samples,train_labels)
                 joblib.dump(emp95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
             else:
-                emp95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1)))
+                emp95_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
             emp95_train_samples = None
             
             # 99
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1))):
                 emp99_train_samples = emp99_data[train_ix]
                 emp99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 emp99_model.fit(emp99_train_samples,train_labels)
                 joblib.dump(emp99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
             else:
-                emp99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1)))
+                emp99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
             emp99_train_samples = None
 
             # Spectral Model
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
                 spectral_train_samples = spectral_data[train_ix]
                 spectral_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 spectral_model.fit(spectral_train_samples,train_labels)
                 joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
             else:
-                spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
+                spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
             spectral_train_samples = None
 
             # EMP + Spectral Bands Models
             # 95
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1))):
                 total95_train_samples = total95_data[train_ix]
                 total95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 total95_model.fit(total95_train_samples,train_labels)
                 joblib.dump(total95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
             else:
-                total95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+                total95_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
             total95_train_samples = None
 
             # 99
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1))):
                 total99_train_samples = total99_data[train_ix]
                 total99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 total99_model.fit(total99_train_samples,train_labels)
                 joblib.dump(total99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             else:
-                total99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+                total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             total99_train_samples = None
 
             # EMP-PCA + Spectral Bands Models
             # 95
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp-pca95+spectral_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp-pca95+spectral_model_iteration%s.pkl'%(i+1))):
                 total_pca95_train_samples = total_pca95_data[train_ix]
                 total_pca95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 total_pca95_model.fit(total_pca95_train_samples,train_labels)
                 joblib.dump(total_pca95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
             else:
-                total_pca95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp-pca95+spectral_model_iteration%s.pkl'%(i+1)))
+                total_pca95_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp-pca95+spectral_model_iteration%s.pkl'%(i+1)))
             total_pca95_train_samples = None
             # 99
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp-pca99+spectral_model_iteration%s.pkl'%(i+1))):
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp-pca99+spectral_model_iteration%s.pkl'%(i+1))):
                 total_pca99_train_samples = total_pca99_data[train_ix]
                 total_pca99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
                 total_pca99_model.fit(total_pca99_train_samples,train_labels)
                 joblib.dump(total_pca99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             else:
-                total_pca99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp-pca99+spectral_model_iteration%s.pkl'%(i+1)))
+                total_pca99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp-pca99+spectral_model_iteration%s.pkl'%(i+1)))
             total_pca99_train_samples = None
            
             # Testing
