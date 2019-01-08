@@ -704,9 +704,26 @@ class Classifier :
 
         df3 = pd.DataFrame({'Class': [str(v) for v in list(dicClass.keys())],
                             'Name' : [dicClass[v][0] for v in list(dicClass.keys())],
-                            'Count': [dicCount[v] for v in list(dicClass.keys())]
+                            'Objects': [dicCount[v] for v in list(dicClass.keys())],
+                            'Pixels': [np.count_nonzero(self._gt_labels==v) for v in list(dicClass.keys())]
                             })
         df3.to_csv(outCSV, mode='a', index=False)
+
+        dic4 = {}
+        dic4.setdefault("Size",[]).append("Total")
+        dic4.setdefault("Spectral Bands",[]).append(spectral_data.shape[1])
+        dic4.setdefault("PCA95",[]).append(total95_data.shape[1]-total_pca95_data.shape[1])
+        dic4.setdefault("PCA99",[]).append(total99_data.shape[1]-total_pca99_data.shape[1])
+        dic4.setdefault("EMP95",[]).append(emp95_data.shape[1])
+        dic4.setdefault("EMP99",[]).append(emp99_data.shape[1])
+        dic4.setdefault("EMP95 + Spectral Bands",[]).append(total95_data.shape[1])
+        dic4.setdefault("EMP99 + Spectral Bands",[]).append(total99_data.shape[1])
+        dic4.setdefault("EMP-PCA 95 + Spectral Bands",[]).append(total_pca95_data.shape[1])
+        dic4.setdefault("EMP-PCA 99 + Spectral Bands",[]).append(total_pca99_data.shape[1])
+
+        df4 = pd.DataFrame.from_dict(dic4)
+        df4.to_csv(outCSV, mode ='a', index=False)
+        
 
     # def _plot_cm (self,cm,normalize=True,cmap=plt.cm.plasma) :
     #     if normalize:
