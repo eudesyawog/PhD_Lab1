@@ -220,16 +220,23 @@ class Morpho_Operation :
         
         lstFiles = glob.glob(os.path.join(self._outPath,Folder)+os.sep+"*.tif")
         lstFiles.sort()
+        lstFiles2 = lstFiles.copy()
         pcaFiles = glob.glob(self._inPath+os.sep+"*.tif")
         pcaFiles.sort()
         for File in pcaFiles :
             if re.match("{}_(.*)".format(os.path.basename(Folder).split("_")[0]),os.path.basename(File)):
                 lstFiles.append(File)
                 break
-        outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP.tif"
+        # outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP.tif"
+        # Command = ['otbcli_ConcatenateImages','-il']
+        # Command.extend(lstFiles)
+        # Command += ['-out',os.path.join(self._outPath,outFile),'-ram','8192']
+        # subprocess.call(Command,shell=False)
+
+        outFile2 = os.path.basename(lstFiles2[0]).split('_')[0] +'_'+ os.path.basename(lstFiles2[0]).split('_')[1] +"_EMP-PCA.tif"
         Command = ['otbcli_ConcatenateImages','-il']
-        Command.extend(lstFiles)
-        Command += ['-out',os.path.join(self._outPath,outFile),'-ram','8192']
+        Command.extend(lstFiles2)
+        Command += ['-out',os.path.join(self._outPath,outFile2),'-ram','8192']
         subprocess.call(Command,shell=False)
 
         return os.path.join(self._outPath,Folder)
@@ -610,14 +617,14 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_95"
-    # morpho = Morpho_Operation(inPath)
+    morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    # morpho.create_emp()
+    morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_99"
-    # morpho = Morpho_Operation(inPath)
+    morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    # morpho.create_emp()
+    morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
@@ -654,17 +661,17 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_95"
-    # morpho = Morpho_Operation(inPath)
+    morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    # morpho.create_emp()
+    morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_99"
-    # morpho = Morpho_Operation(inPath)
+    morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    # morpho.create_emp()
+    morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    CO = Classifier(inPath,ground_truth)
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth)
+    # CO.classify()
