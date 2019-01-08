@@ -220,24 +220,27 @@ class Morpho_Operation :
         
         lstFiles = glob.glob(os.path.join(self._outPath,Folder)+os.sep+"*.tif")
         lstFiles.sort()
-        lstFiles2 = lstFiles.copy()
+
+        outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP-PCA.tif"
+        Command = ['otbcli_ConcatenateImages','-il']
+        Command.extend(lstFiles)
+        Command += ['-out',os.path.join(self._outPath,outFile),'-ram','4096']
+        subprocess.call(Command,shell=False)
+
         pcaFiles = glob.glob(self._inPath+os.sep+"*.tif")
         pcaFiles.sort()
         for File in pcaFiles :
             if re.match("{}_(.*)".format(os.path.basename(Folder).split("_")[0]),os.path.basename(File)):
                 lstFiles.append(File)
                 break
-        # outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP.tif"
-        # Command = ['otbcli_ConcatenateImages','-il']
-        # Command.extend(lstFiles)
-        # Command += ['-out',os.path.join(self._outPath,outFile),'-ram','8192']
-        # subprocess.call(Command,shell=False)
 
-        outFile2 = os.path.basename(lstFiles2[0]).split('_')[0] +'_'+ os.path.basename(lstFiles2[0]).split('_')[1] +"_EMP-PCA.tif"
+        outFile = os.path.basename(lstFiles[0]).split('_')[0] +'_'+ os.path.basename(lstFiles[0]).split('_')[1] +"_EMP.tif"
         Command = ['otbcli_ConcatenateImages','-il']
-        Command.extend(lstFiles2)
-        Command += ['-out',os.path.join(self._outPath,outFile2),'-ram','8192']
+        Command.extend(lstFiles)
+        Command += ['-out',os.path.join(self._outPath,outFile),'-ram','4096']
         subprocess.call(Command,shell=False)
+
+        
 
         return os.path.join(self._outPath,Folder)
 
@@ -264,13 +267,16 @@ class Morpho_Operation :
         print("Time for process : %ssecs" % (end_time - start_time))
 
 class Classifier :
-    def __init__(self,inPath,ground_truth,niter=5):
+    def __init__(self,inPath,ground_truth,niter=5,DateTime=None):
         self._inPath = inPath
         self._gt = ground_truth
         self._outPath = os.path.join(inPath,"CLASSIF")
         if not os.path.isdir(self._outPath):
             os.makedirs(self._outPath)
-        self._datetime = datetime.now().strftime("%m%d_%H%M")
+        if DateTime is None :
+            self._datetime = datetime.now().strftime("%m%d_%H%M")
+        else :
+            self._datetime = DateTime
         self._niter = niter
         self._prepare_classif()
     
@@ -323,7 +329,7 @@ class Classifier :
         # EMP
         self._emp95_data = os.path.join(self._outPath,"DATA","emp95_data.npy")
         if not os.path.exists(self._emp95_data) :
-            lstEMP95 = glob.glob(os.path.join(self._inPath,"EMP_95")+os.sep+"*.tif")
+            lstEMP95 = glob.glob(os.path.join(self._inPath,"EMP_95")+os.sep+"*EMP.tif")
             lstEMP95.sort()
             emp95_samples = None
             for File in lstEMP95 :
@@ -334,10 +340,11 @@ class Classifier :
                         else :
                             emp95_samples = np.column_stack((emp95_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp95_data,emp95_samples)
+            emp95_samples = None
         
         self._emp99_data = os.path.join(self._outPath,"DATA","emp99_data.npy")
         if not os.path.exists(self._emp99_data) :
-            lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*.tif")
+            lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
             lstEMP99.sort()
             emp99_samples = None
             for File in lstEMP99 :
@@ -348,6 +355,38 @@ class Classifier :
                         else :
                             emp99_samples = np.column_stack((emp99_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp99_data,emp99_samples)
+            emp99_samples = None
+        
+        # EMP-PCA
+        self._emp_pca95_data = os.path.join(self._outPath,"DATA","emp-pca95_data.npy")
+        if not os.path.exists(self._emp_pca95_data) :
+            lstEMP_PCA95 = glob.glob(os.path.join(self._inPath,"EMP_95")+os.sep+"*EMP-PCA.tif")
+            lstEMP_PCA95.sort()
+            emp_pca95_samples = None
+            for File in lstEMP_PCA95 :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count) :
+                        if emp_pca95_samples is None :
+                            emp_pca95_samples = ds.read(j+1)[self._gt_indices]
+                        else :
+                            emp_pca95_samples = np.column_stack((emp95_samples,ds.read(j+1)[self._gt_indices]))
+            np.save(self._emp_pca95_data,emp_pca95_samples)
+            emp_pca95_samples = None
+        
+        self._emp_pca99_data = os.path.join(self._outPath,"DATA","emp-pca99_data.npy")
+        if not os.path.exists(self._emp_pca99_data) :
+            lstEMP_PCA99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP-PCA.tif")
+            lstEMP_PCA99.sort()
+            emp_pca99_samples = None
+            for File in lstEMP_PCA99 :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count) :
+                        if emp_pca99_samples is None :
+                            emp_pca99_samples = ds.read(j+1)[self._gt_indices]
+                        else :
+                            emp_pca99_samples = np.column_stack((emp99_samples,ds.read(j+1)[self._gt_indices]))
+            np.save(self._emp_pca99_data,emp_pca99_samples)
+            emp_pca99_samples = None
         
         # Spectral data
         self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
@@ -361,6 +400,7 @@ class Classifier :
                         else :
                             spectral_samples = np.column_stack((spectral_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._spectral_data,spectral_samples)
+            spectral_samples = None
 
     def classify (self):
         emp95_data = np.load(self._emp95_data)
@@ -368,6 +408,13 @@ class Classifier :
         spectral_data = np.load(self._spectral_data)
         total95_data = np.column_stack((emp95_data,spectral_data))
         total99_data = np.column_stack((emp99_data,spectral_data))
+        
+        emp_pca95_data = np.load(self._emp_pca95_data)
+        emp_pca99_data = np.load(self._emp_pca99_data)
+        total_pca95_data = np.column_stack((emp_pca95_data,spectral_data))
+        total_pca99_data = np.column_stack((emp_pca99_data,spectral_data))
+        emp_pca95_data = None
+        emp_pca99_data = None
 
         gt = gpd.read_file(self._gt)
         dicClass = gt.groupby(["Code"])["Name"].unique().to_dict()
@@ -385,66 +432,101 @@ class Classifier :
         for i in range(self._niter):
             print ("Iteration %s"%(i+1))
             
-            train_ID = []
-            test_ID = []
-            for c in lstClass :
-                lstID = gt["ID"][gt["Code"] == c].tolist()
-                random.shuffle(lstID)
-                random.shuffle(lstID)
-                train_ID.extend(lstID[:round(len(lstID)*0.7)]) #Train Test proportion 70%
-                test_ID.extend(lstID[round(len(lstID)*0.7):])
+            if not os.path.isfile(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1))) and not (os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1))) :
+                train_ID = []
+                test_ID = []
+                for c in lstClass :
+                    lstID = gt["ID"][gt["Code"] == c].tolist()
+                    random.shuffle(lstID)
+                    random.shuffle(lstID)
+                    train_ID.extend(lstID[:round(len(lstID)*0.7)]) #Train Test proportion 70%
+                    test_ID.extend(lstID[round(len(lstID)*0.7):])
+                train_df = gt[gt["ID"].isin(train_ID)]
+                train_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
+                
+                test_df = gt[gt["ID"].isin(test_ID)]
+                test_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
+            else :
+                train_df = gpd.read_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
+                train_ID = train_df["ID"].tolist()
+                test_df = gpd.read_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
+                test_ID = test_df["ID"].tolist()
             
-            train_df = gt[gt["ID"].isin(train_ID)]
-            train_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1)))
-            
-            test_df = gt[gt["ID"].isin(test_ID)]
-            test_df.to_file(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1)))
-
             # Training
             train_ix = np.where(np.isin(self._gt_ID, train_ID))
             train_labels = self._gt_labels[train_ix]
 
-            # EMP Model
+            # EMP Models
             # 95
-            emp95_train_samples = emp95_data[train_ix]
-            emp95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            emp95_model.fit(emp95_train_samples,train_labels)
-            joblib.dump(emp95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
-            # emp95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1)))
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1))):
+                emp95_train_samples = emp95_data[train_ix]
+                emp95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                emp95_model.fit(emp95_train_samples,train_labels)
+                joblib.dump(emp95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95_model_iteration%s.pkl'%(i+1)))
+            else:
+                emp95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95_model_iteration%s.pkl'%(i+1)))
             emp95_train_samples = None
             
             # 99
-            emp99_train_samples = emp99_data[train_ix]
-            emp99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            emp99_model.fit(emp99_train_samples,train_labels)
-            joblib.dump(emp99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
-            # emp99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1)))
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1))):
+                emp99_train_samples = emp99_data[train_ix]
+                emp99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                emp99_model.fit(emp99_train_samples,train_labels)
+                joblib.dump(emp99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
+            else:
+                emp99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99_model_iteration%s.pkl'%(i+1)))
             emp99_train_samples = None
 
             # Spectral Model
-            spectral_train_samples = spectral_data[train_ix]
-            spectral_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            spectral_model.fit(spectral_train_samples,train_labels)
-            joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
-            # spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1))):
+                spectral_train_samples = spectral_data[train_ix]
+                spectral_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                spectral_model.fit(spectral_train_samples,train_labels)
+                joblib.dump(spectral_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
+            else:
+                spectral_model = joblib.load(os.path.join(self._outPath,"MODELS",'spectral_model_iteration%s.pkl'%(i+1)))
             spectral_train_samples = None
 
-            # EMP + Spectral Bands Model
+            # EMP + Spectral Bands Models
             # 95
-            total95_train_samples = total95_data[train_ix]
-            total95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            total95_model.fit(total95_train_samples,train_labels)
-            joblib.dump(total95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
-            # total95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1))):
+                total95_train_samples = total95_data[train_ix]
+                total95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                total95_model.fit(total95_train_samples,train_labels)
+                joblib.dump(total95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+            else:
+                total95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1)))
             total95_train_samples = None
 
             # 99
-            total99_train_samples = total99_data[train_ix]
-            total99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
-            total99_model.fit(total99_train_samples,train_labels)
-            joblib.dump(total99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
-            # total99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp95+spectral_model_iteration%s.pkl'%(i+1))):
+                total99_train_samples = total99_data[train_ix]
+                total99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                total99_model.fit(total99_train_samples,train_labels)
+                joblib.dump(total99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+            else:
+                total99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             total99_train_samples = None
+
+            # EMP-PCA + Spectral Bands Models
+            # 95
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp-pca95+spectral_model_iteration%s.pkl'%(i+1))):
+                total_pca95_train_samples = total_pca95_data[train_ix]
+                total_pca95_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                total_pca95_model.fit(total_pca95_train_samples,train_labels)
+                joblib.dump(total_pca95_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp95+spectral_model_iteration%s.pkl'%(i+1)))
+            else:
+                total_pca95_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp-pca95+spectral_model_iteration%s.pkl'%(i+1)))
+            total_pca95_train_samples = None
+            # 99
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS",'emp-pca99+spectral_model_iteration%s.pkl'%(i+1))):
+                total_pca99_train_samples = total_pca99_data[train_ix]
+                total_pca99_model = RandomForestClassifier(n_estimators=300, verbose=True) #300
+                total_pca99_model.fit(total_pca99_train_samples,train_labels)
+                joblib.dump(total_pca99_model, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+            else:
+                total_pca99_model = joblib.load(os.path.join(self._outPath,"MODELS",'emp-pca99+spectral_model_iteration%s.pkl'%(i+1)))
+            total_pca99_train_samples = None
            
             # Testing
             test_ix = np.where(np.isin(self._gt_ID, test_ID))
@@ -507,31 +589,62 @@ class Classifier :
             # total99_cm = confusion_matrix(test_labels, total99_predict)
             total99_test_samples = None
 
+            # Predict & Metrics EMP-PCA + Spectral Data
+            # 95
+            total_pca95_test_samples = total_pca95_data[test_ix]
+            total_pca95_predict = total_pca95_model.predict(total_pca95_test_samples)
+            outdic.setdefault('Input',[]).append("EMP-PCA 95 + Spectral Bands")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total_pca95_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total_pca95_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total_pca95_predict,average='weighted'))
+            total_pca95_per_class = f1_score(test_labels, total_pca95_predict,average=None)
+            # total_pca95_cm = confusion_matrix(test_labels, total_pca95_predict)
+            total_pca95_test_samples = None
+
+            # 99
+            total_pca99_test_samples = total_pca99_data[test_ix]
+            total_pca99_predict = total_pca99_model.predict(total_pca99_test_samples)
+            outdic.setdefault('Input',[]).append("EMP-PCA 99 + Spectral Bands")
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total_pca99_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total_pca99_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total_pca99_predict,average='weighted'))
+            total_pca99_per_class = f1_score(test_labels, total_pca99_predict,average=None)
+            # total_pca99_cm = confusion_matrix(test_labels, total_pca99_predict)
+            total_pca99_test_samples = None
+
             print ("EMP95 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*5],3),round(outdic['Kappa Coefficient'][i*5],3),round(outdic['F-Measure'][i*5],3)))
+                round(outdic['Overall Accuracy'][i*7],3),round(outdic['Kappa Coefficient'][i*7],3),round(outdic['F-Measure'][i*7],3)))
             
             print ("EMP99 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*5+1],3),round(outdic['Kappa Coefficient'][i*5+1],3),round(outdic['F-Measure'][i*5+1],3)))
+                round(outdic['Overall Accuracy'][i*7+1],3),round(outdic['Kappa Coefficient'][i*7+1],3),round(outdic['F-Measure'][i*7+1],3)))
             
             print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*5+2],3),round(outdic['Kappa Coefficient'][i*5+2],3),round(outdic['F-Measure'][i*5+2],3)))
+                round(outdic['Overall Accuracy'][i*7+2],3),round(outdic['Kappa Coefficient'][i*7+2],3),round(outdic['F-Measure'][i*7+2],3)))
             
             print ("EMP95 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-                round(outdic['Overall Accuracy'][i*5+3],3),round(outdic['Kappa Coefficient'][i*5+3],3),round(outdic['F-Measure'][i*5+3],3)))
+                round(outdic['Overall Accuracy'][i*7+3],3),round(outdic['Kappa Coefficient'][i*7+3],3),round(outdic['F-Measure'][i*7+3],3)))
             
-            print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
-                round(outdic['Overall Accuracy'][i*5+4],3),round(outdic['Kappa Coefficient'][i*5+4],3),round(outdic['F-Measure'][i*5+4],3)))
+            print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*7+4],3),round(outdic['Kappa Coefficient'][i*7+4],3),round(outdic['F-Measure'][i*7+4],3)))
+            
+            print ("EMP-PCA 95 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*7+5],3),round(outdic['Kappa Coefficient'][i*7+5],3),round(outdic['F-Measure'][i*7+5],3)))
+
+            print ("EMP-PCA 99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
+                round(outdic['Overall Accuracy'][i*7+6],3),round(outdic['Kappa Coefficient'][i*7+6],3),round(outdic['F-Measure'][i*7+5],3)))
         
         # outdf.to_csv(outCSV, index=False)
         outdf = pd.DataFrame.from_dict(outdic)
         mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
         std_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].std()
-        df1 = pd.DataFrame({'Input': ["EMP95", "EMP99", "Spectral Bands", "EMP95 + Spectral Bands","EMP99 + Spectral Bands",""],
+        df1 = pd.DataFrame({'Input': ["EMP95", "EMP99", "Spectral Bands", "EMP95 + Spectral Bands","EMP99 + Spectral Bands","EMP-PCA 95 + Spectral Bands","EMP-PCA 99 + Spectral Bands",""],
                     'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP95']['Overall Accuracy'],3),round(std_df.loc['EMP95']['Overall Accuracy'],3)),
                                          "%s +/- %s"%(round(mean_df.loc['EMP99']['Overall Accuracy'],3),round(std_df.loc['EMP99']['Overall Accuracy'],3)),
                                          "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['Spectral Bands']['Overall Accuracy'],3)),
                                          "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3)),
                                          "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP-PCA 95 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP-PCA 95 + Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP-PCA 99 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP-PCA 99 + Spectral Bands']['Overall Accuracy'],3)),
                                          ""],
                                          
                     'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP95']['Kappa Coefficient'],3),round(std_df.loc['EMP95']['Kappa Coefficient'],3)),
@@ -539,12 +652,17 @@ class Classifier :
                                            "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
                                            "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP95 + Spectral Bands']['Overall Accuracy'],3)),
                                            "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
-                                          ""],
+                                           "%s +/- %s"%(round(mean_df.loc['EMP-PCA 95 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP-PCA 95 + Spectral Bands']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['EMP-PCA 99 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP-PCA 99 + Spectral Bands']['Kappa Coefficient'],3)),
+                                           ""],
+
                     'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP95']['F-Measure'],3),round(std_df.loc['EMP95']['F-Measure'],3)),
                                    "%s +/- %s"%(round(mean_df.loc['EMP99']['F-Measure'],3),round(std_df.loc['EMP99']['F-Measure'],3)),
                                    "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
                                    "%s +/- %s"%(round(mean_df.loc['EMP95 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP95 + Spectral Bands']['F-Measure'],3)),
                                    "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP99 + Spectral Bands']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP-PCA 95 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP-PCA 95 + Spectral Bands']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP-PCA 99 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP-PCA 99 + Spectral Bands']['F-Measure'],3)),
                                    ""]})
         df1.to_csv(outCSV, index=False)
 
@@ -568,6 +686,14 @@ class Classifier :
         dic2.setdefault('Per Class F-Measure',[]).append("EMP99 + Spectral Bands")
         for v in list(dicClass.keys()):
             dic2.setdefault('Class %s'%(v),[]).append(round(total99_per_class[v],3))
+        
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP-PCA 95 + Spectral Bands")
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(total_pca95_per_class[v],3))
+        
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP-PCA 99 + Spectral Bands")
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append(round(total_pca99_per_class[v],3))
 
         dic2.setdefault('Per Class F-Measure',[]).append("")
         for v in list(dicClass.keys()):
@@ -617,20 +743,20 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_95"
-    morpho = Morpho_Operation(inPath)
+    # morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    morpho.create_emp()
+    # morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT/PCA_99"
-    morpho = Morpho_Operation(inPath)
+    # morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    morpho.create_emp()
+    # morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-    # CO = Classifier(inPath,ground_truth)
-    # CO.classify()
+    CO = Classifier(inPath,ground_truth,DateTime="0103_1326")
+    CO.classify()
 
 
     # ========
@@ -661,17 +787,17 @@ if __name__ == '__main__':
 
     # EMP
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_95"
-    morpho = Morpho_Operation(inPath)
+    # morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    morpho.create_emp()
+    # morpho.create_emp()
 
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT/PCA_99"
-    morpho = Morpho_Operation(inPath)
+    # morpho = Morpho_Operation(inPath)
     # morpho.create_mp()
-    morpho.create_emp()
+    # morpho.create_emp()
 
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    # CO = Classifier(inPath,ground_truth)
-    # CO.classify()
+    CO = Classifier(inPath,ground_truth,DateTime="0106_1537")
+    CO.classify()
