@@ -636,9 +636,8 @@ class Classifier :
                 round(outdic['Overall Accuracy'][i*7+5],3),round(outdic['Kappa Coefficient'][i*7+5],3),round(outdic['F-Measure'][i*7+5],3)))
 
             print ("EMP-PCA 99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s\n"%(
-                round(outdic['Overall Accuracy'][i*7+6],3),round(outdic['Kappa Coefficient'][i*7+6],3),round(outdic['F-Measure'][i*7+5],3)))
-        
-        
+                round(outdic['Overall Accuracy'][i*7+6],3),round(outdic['Kappa Coefficient'][i*7+6],3),round(outdic['F-Measure'][i*7+6],3)))
+            
         outdf = pd.DataFrame.from_dict(outdic)
         outdf.to_csv(outCSViter, index=False)
         mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
@@ -778,8 +777,8 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-    CO = Classifier(inPath,ground_truth)
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth,DateTime="0112_0908")
+    # CO.classify()
 
 
     # ========
@@ -822,5 +821,5 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    CO = Classifier(inPath,ground_truth)
+    CO = Classifier(inPath,ground_truth,DateTime="0114_0924")
     CO.classify()
