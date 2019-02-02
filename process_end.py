@@ -147,8 +147,8 @@ class Classifier :
             spectral_samples = None
 
     def classify (self):
-        # emp99_data = np.load(self._emp99_data)
-        spectral_data = np.load(self._spectral_data)
+        emp99_data = np.load(self._emp99_data)
+        # spectral_data = np.load(self._spectral_data)
         # total99_data = np.column_stack((emp99_data,spectral_data))
 
         gt = gpd.read_file(self._gt)
@@ -227,33 +227,33 @@ class Classifier :
             tuned_parameters = {'n_estimators': n_estimators,
                                 'max_depth': max_depth}
             # Spectral Bands
-            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
-                spectral_merged_samples = spectral_data[merged_ix]
-                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=3)
-                grid.fit(spectral_merged_samples, merged_labels)
-                joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
-                spectral_merged_samples = None
+            # if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
+            #     spectral_merged_samples = spectral_data[merged_ix]
+            #     grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2)
+            #     grid.fit(spectral_merged_samples, merged_labels)
+            #     joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
+            #     spectral_merged_samples = None
                 
-                print("Best score: {}".format(grid.best_score_))
-                print("Best set of hyperparameters: {} \n".format(grid.best_params_))
-                # spectral_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
-                # fi = open(fichier_txt,'a')
-                # fi.write("Iteration %s"%(i+1))
-                # fi.write("\n Spectral bands : %s"%str(spectral_best_param))
-                # fi.close()    
-            else:
-                spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
+            #     print("Best score: {}".format(grid.best_score_))
+            #     print("Best set of hyperparameters: {} \n".format(grid.best_params_))
+            #     # spectral_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
+            #     # fi = open(fichier_txt,'a')
+            #     # fi.write("Iteration %s"%(i+1))
+            #     # fi.write("\n Spectral bands : %s"%str(spectral_best_param))
+            #     # fi.close()    
+            # else:
+            #     spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
 
             # EMP99
-            # if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1))):
-            #     emp99_merged_samples = emp99_data[merged_ix]
-            #     grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,pre_dispatch=12,verbose=3)
-            #     grid.fit(emp99_merged_samples, merged_labels)
-            #     joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
-            #     emp99_merged_samples = None
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1))):
+                emp99_merged_samples = emp99_data[merged_ix]
+                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2) # pre_dispatch=12
+                grid.fit(emp99_merged_samples, merged_labels)
+                joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
+                emp99_merged_samples = None
 
-            #     print("Best score: {}".format(grid.best_score_))
-            #     print("Best set of hyperparameters: {}".format(grid.best_params_))
+                print("Best score: {}".format(grid.best_score_))
+                print("Best set of hyperparameters: {}".format(grid.best_params_))
             #     emp99_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
             #     fi = open(fichier_txt,'a')
             #     fi.write("\n EMP 99 : %s"%str(emp99_best_param))
@@ -402,8 +402,8 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-    # CO = Classifier(inPath,ground_truth)
-    # CO.classify()
+    CO = Classifier(inPath,ground_truth)
+    CO.classify()
 
     # ========
     # DORDOGNE
@@ -416,5 +416,5 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    CO = Classifier(inPath,ground_truth)
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth)
+    # CO.classify()
