@@ -25,6 +25,9 @@ class Classifier :
         self._prepare_classif()
     
     def _prepare_classif(self) :
+        
+        if not os.path.isdir(os.path.join(self._outPath,"DATA")):
+            os.makedirs(os.path.join(self._outPath,"DATA"))
 
         lstSpectral = [os.path.join(self._inPath,"GAPF",File) for File in os.listdir(os.path.join(self._inPath,"GAPF")) if File.endswith("GAPF.tif")]
         lstSpectral.sort()
@@ -35,15 +38,45 @@ class Classifier :
             self._width = ds.width
             self._height = ds.height
         self._profile.update(count=1,dtype=rasterio.int16)
-
-        # EMP
-        # self._emp99_data = os.path.join(self._outPath,"DATA","emp99_data.npy")
         
         # Spectral data
-        self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
+        self._spectral_data = os.path.join(self._outPath,"DATA","spectral_map_data.npy")
+        if not os.path.isfile(self._spectral_data) :
+            spectral_samples = None
+            for File in lstSpectral :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count):
+                        if spectral_samples is None :
+                            spectral_samples = ds.read(j+1).reshape((self._width*self._width))
+                        else :
+                            spectral_samples = np.column_stack((spectral_samples,ds.read(j+1).reshape((self._width*self._width))))
+            np.save(self._spectral_data,spectral_samples)
+            spectral_samples = None
+
+        # EMP
+        self._emp99_data = os.path.join(self._outPath,"DATA","emp99_map_data.npy")
+        if not os.path.isfile(self._emp99_data) :
+            lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
+            lstEMP99.sort()
+            emp99_samples = None
+            for File in lstEMP99 :
+                with rasterio.open(File) as ds :
+                    for j in range(ds.count) :
+                        if emp99_samples is None :
+                            emp99_samples = ds.read(j+1).reshape((self._width*self._width))
+                        else :
+                            emp99_samples = np.column_stack((emp99_samples,ds.read(j+1).reshape((self._width*self._width))))
+            np.save(self._emp99_data,emp99_samples)
+            emp99_samples = None
         
         # EMP99 + Spectral data
-        self._total99_data = os.path.join(self._outPath,"DATA","total99_data.npy")
+        self._total99_data = os.path.join(self._outPath,"DATA","total99_map_data.npy")
+        if not os.path.isfile(self._total99_data) :
+            emp99_samples = np.load(self._emp99_data)
+            spectral_samples = np.load(self._spectral_data)
+            np.save(self._total99_data,np.column_stack((emp99_samples,spectral_samples)))
+            emp99_samples = None
+            spectral_samples = None
         
     def classify (self):
         # emp99_data = np.load(self._emp99_data)
