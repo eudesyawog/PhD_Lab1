@@ -20,6 +20,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import PredefinedSplit, GridSearchCV
 from sklearn.metrics import confusion_matrix, accuracy_score, cohen_kappa_score, f1_score
 import matplotlib.pyplot as plt
+from itertools import product
 from skimage.morphology import erosion, dilation, opening, closing, disk
 
 # class Geodesic_Morpho_Operation :
@@ -66,6 +67,27 @@ class Classifier :
             self._datetime = DateTime
         self._niter = niter
         self._prepare_classif()
+    
+    def _plot_cm(self,cm,classes,outfig,normalize=True,cmap=plt.get_cmap("Blues")):
+        if normalize :
+            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        plt.figure()
+        plt.imshow(cm, interpolation='nearest', cmap=cmap)
+        plt.colorbar()
+
+        tick_marks = np.arange(len(classes))
+        plt.xticks(tick_marks, classes, rotation=45)
+        plt.yticks(tick_marks, classes)
+        fmt = '.2f' if normalize else 'd'
+        thresh = cm.max() / 2.
+        for i, j in product(range(cm.shape[0]), range(cm.shape[1])):
+            plt.text(j, i, format(cm[i, j], fmt),
+                    horizontalalignment="center",
+                    color="white" if cm[i, j] > thresh else "black")
+        plt.ylabel('True label')
+        plt.xlabel('Predicted label')
+        plt.tight_layout()
+        plt.savefig(outfig,dpi=300)
     
     def _prepare_classif(self) :
 
@@ -130,7 +152,6 @@ class Classifier :
                         else :
                             emp99_samples = np.column_stack((emp99_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._emp99_data,emp99_samples)
-            emp99_samples = None
         
         # Spectral data
         self._spectral_data = os.path.join(self._outPath,"DATA","spectral_data.npy")
@@ -144,27 +165,39 @@ class Classifier :
                         else :
                             spectral_samples = np.column_stack((spectral_samples,ds.read(j+1)[self._gt_indices]))
             np.save(self._spectral_data,spectral_samples)
+        
+        # EMP99 + Spectral data
+        self._total99_data = os.path.join(self._outPath,"DATA","total99_data.npy")
+        if not os.path.isfile(self._total99_data) :
+            emp99_samples = np.load(self._emp99_data)
+            spectral_samples = np.load(self._spectral_data)
+            np.save(self._total99_data,np.column_stack((emp99_samples,spectral_samples)))
+            emp99_samples = None
             spectral_samples = None
 
     def classify (self):
         emp99_data = np.load(self._emp99_data)
-        # spectral_data = np.load(self._spectral_data)
-        # total99_data = np.column_stack((emp99_data,spectral_data))
+        spectral_data = np.load(self._spectral_data)
+        total99_data = np.load(self._total99_data)
 
         gt = gpd.read_file(self._gt)
         dicClass = gt.groupby(["Code"])["Name"].unique().to_dict()
         lstClass = list(dicClass.keys())
-        # dicCount = gt.groupby(["Code"])["Code"].count().to_dict()
+        dicCount = gt.groupby(["Code"])["Code"].count().to_dict()
 
         if not os.path.isdir(os.path.join(self._outPath,"MODELS_%s"%self._datetime)):
             os.makedirs(os.path.join(self._outPath,"MODELS_%s"%self._datetime))
         if not os.path.isdir(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime)):
             os.makedirs(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime))
+        if not os.path.isdir(os.path.join(self._outPath,"CM_%s"%self._datetime)):
+            os.makedirs(os.path.join(self._outPath,"CM_%s"%self._datetime))
+        if not os.path.isdir(os.path.join(self._outPath,"FEAT_IMP_%s"%self._datetime)):
+            os.makedirs(os.path.join(self._outPath,"FEAT_IMP_%s"%self._datetime))
 
-        # outCSV = os.path.join(self._outPath,"results_summary_%s.csv"%self._datetime)
-        # outCSViter = os.path.join(self._outPath,"results_iterations_%s.csv"%self._datetime)
-        # outdic = {}
-        # fichier_txt = os.path.join(self._outPath,"MODELS_%s"%self._datetime,"best_params_%s.txt"%self._datetime)
+        outCSV = os.path.join(self._outPath,"results_summary_%s.csv"%self._datetime)
+        outCSViter = os.path.join(self._outPath,"results_iterations_%s.csv"%self._datetime)
+        outdic = {}
+        fichier_txt = os.path.join(self._outPath,"MODELS_%s"%self._datetime,"best_params_%s.txt"%self._datetime)
         
         for i in range(self._niter):
             if not os.path.isfile(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"train_samples_iteration%s.shp"%(i+1))) and not os.path.isfile(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"validation_samples_iteration%s.shp"%(i+1))) and not os.path.isfile(os.path.join(self._outPath,"SAMPLES_%s"%self._datetime,"test_samples_iteration%s.shp"%(i+1))) :
@@ -220,174 +253,188 @@ class Classifier :
             fold.extend([0]*validation_labels.size)
             ps = PredefinedSplit(test_fold=fold)
 
-            # GridSearch
+            GridSearch
             rf = RandomForestClassifier()
             n_estimators = [200,300,400,500]
             max_depth = [20,40,60,80,100,None]
             tuned_parameters = {'n_estimators': n_estimators,
                                 'max_depth': max_depth}
-            # Spectral Bands
-            # if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
-            #     spectral_merged_samples = spectral_data[merged_ix]
-            #     grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2)
-            #     grid.fit(spectral_merged_samples, merged_labels)
-            #     joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
-            #     spectral_merged_samples = None
+            Spectral Bands
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
+                spectral_merged_samples = spectral_data[merged_ix]
+                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2)
+                grid.fit(spectral_merged_samples, merged_labels)
+                joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
+                spectral_merged_samples = None
                 
-            #     print("Best score: {}".format(grid.best_score_))
-            #     print("Best set of hyperparameters: {} \n".format(grid.best_params_))
-            #     # spectral_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
-            #     # fi = open(fichier_txt,'a')
-            #     # fi.write("Iteration %s"%(i+1))
-            #     # fi.write("\n Spectral bands : %s"%str(spectral_best_param))
-            #     # fi.close()    
-            # else:
-            #     spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
+                print("Best score: {}".format(grid.best_score_))
+                print("Best set of hyperparameters: {} \n".format(grid.best_params_))
+                # spectral_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
+                # fi = open(fichier_txt,'a')
+                # fi.write("Iteration %s"%(i+1))
+                # fi.write("\n Spectral bands : %s"%str(spectral_best_param))
+                # fi.close()    
+            else:
+                spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
 
-            # EMP99
+            EMP99
             if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1))):
                 emp99_merged_samples = emp99_data[merged_ix]
-                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2) # pre_dispatch=12
+                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,pre_dispatch=8,verbose=2)
                 grid.fit(emp99_merged_samples, merged_labels)
                 joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
                 emp99_merged_samples = None
 
                 print("Best score: {}".format(grid.best_score_))
                 print("Best set of hyperparameters: {}".format(grid.best_params_))
-            #     emp99_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
-            #     fi = open(fichier_txt,'a')
-            #     fi.write("\n EMP 99 : %s"%str(emp99_best_param))
-            #     fi.close()
+                emp99_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
+                fi = open(fichier_txt,'a')
+                fi.write("\n EMP 99 : %s"%str(emp99_best_param))
+                fi.close()
 
-                # res = grid.cv_results_['mean_test_score'].reshape(len(n_estimators),len(max_depth))
-                # X, Y = np.meshgrid(max_depth, n_estimators)
-                # fig, ax = plt.subplots(1,1)
-                # cp = ax.contourf(X, Y, res)
-                # ax.scatter(grid.best_params_['max_depth'],grid.best_params_['n_estimators'],color='k')
-                # ax.set_xscale("log")
-                # ax.set_yscale("log")
-                # ax.set_xlabel("max_depth")
-                # ax.set_ylabel("n_estimators")
-                # fig.colorbar(cp)
-                # plt.title(grid.best_params_)
-                # plt.savefig("test.png",dpi=150)
-                # plt.show()
+                res = grid.cv_results_['mean_test_score'].reshape(len(n_estimators),len(max_depth))
+                X, Y = np.meshgrid(max_depth, n_estimators)
+                fig, ax = plt.subplots(1,1)
+                cp = ax.contourf(X, Y, res)
+                ax.scatter(grid.best_params_['max_depth'],grid.best_params_['n_estimators'],color='k')
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_xlabel("max_depth")
+                ax.set_ylabel("n_estimators")
+                fig.colorbar(cp)
+                plt.title(grid.best_params_)
+                plt.savefig("test.png",dpi=150)
+                plt.show()
                 
-            # else:
-            #     emp99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
+            else:
+                emp99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
             
-            # EMP99 + Spectral Bands
-            # if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1))):
-            #     total99_merged_samples = total99_data[merged_ix]
-            #     grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1, pre_dispatch=6,verbose=3)
-            #     grid.fit(total99_merged_samples, merged_labels)
-            #     joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
-            #     total99_merged_samples = None
+            EMP99 + Spectral Bands
+            if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1))):
+                total99_merged_samples = total99_data[merged_ix]
+                grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1, pre_dispatch=3,verbose=3)
+                grid.fit(total99_merged_samples, merged_labels)
+                joblib.dump(grid, os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+                total99_merged_samples = None
 
-            #     print("Best score: {}".format(grid.best_score_))
-            #     print("Best set of hyperparameters: {}".format(grid.best_params_))
-            #     total99_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
-            #     fi = open(fichier_txt,'a')
-            #     fi.write("\n EMP 99 + Spectral bands : %s"%str(total99_best_param))
-            #     fi.close()       
-            # else:
-            #     total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
+                print("Best score: {}".format(grid.best_score_))
+                print("Best set of hyperparameters: {}".format(grid.best_params_))
+                total99_best_param = (grid.best_params_['n_estimators'],grid.best_params_['max_depth'])
+                fi = open(fichier_txt,'a')
+                fi.write("\n EMP 99 + Spectral bands : %s"%str(total99_best_param))
+                fi.close()       
+            else:
+                total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
             
-        #     # Testing
-        #     test_ix = np.where(np.isin(self._gt_ID, test_ID))
-        #     test_labels =  self._gt_labels[test_ix]
-
-        #     # Predict & Metrics Spectral Bands
-        #     spectral_test_samples = spectral_data[test_ix]    
-        #     spectral_predict = spectral_model.predict(spectral_test_samples)
-        #     outdic.setdefault('Input',[]).append("Spectral Bands")
-        #     # outdic.setdefault('Best Parameters',[]).append(spectral_best_param)
-        #     outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, spectral_predict))
-        #     outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
-        #     outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
-        #     spectral_per_class = f1_score(test_labels, spectral_predict,average=None)
-        #     spectral_test_samples = None
-
-        #     # Predict & Metrics EMP99
-        #     emp99_test_samples = emp99_data[test_ix]
-        #     emp99_predict = emp99_model.predict(emp99_test_samples)
-        #     outdic.setdefault('Input',[]).append("EMP99")
-        #     # outdic.setdefault('Best Parameters',[]).append(emp99_best_param)
-        #     outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp99_predict))
-        #     outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp99_predict))
-        #     outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp99_predict,average='weighted'))
-        #     emp99_per_class = f1_score(test_labels, emp99_predict,average=None)
-        #     emp99_test_samples = None
-
-        #     # Predict & Metrics EMP99 + Spectral Data
-        #     total99_test_samples = total99_data[test_ix]
-        #     total99_predict = total99_model.predict(total99_test_samples)
-        #     outdic.setdefault('Input',[]).append("EMP99 + Spectral Bands")
-        #     # outdic.setdefault('Best Parameters',[]).append(total99_best_param)
-        #     outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total99_predict))
-        #     outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total99_predict))
-        #     outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total99_predict,average='weighted'))
-        #     total99_per_class = f1_score(test_labels, total99_predict,average=None)
-        #     total99_test_samples = None
-
-        #     print ("EMP99 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-        #         round(outdic['Overall Accuracy'][i*3],3),round(outdic['Kappa Coefficient'][i*3],3),round(outdic['F-Measure'][i*3],3)))
+                # Feature Importance
+                if not os.path.isfile(os.path.join(self._outPath,"FEAT_IMP_%s"%self._datetime,"features_importance_iteration%s.csv"%(i+1))):
+                    importances = total99_model.best_estimator_.feature_importances_
+                    indices = np.argsort(importances)[::-1]
+                    impdf = pd.DataFrame({'Feature': ["Feat %s"%indices[f] for f in range(total99_data.shape[1])],
+                                        'Importance': [importances[indices[f]] for f in range(total99_data.shape[1])]})
+                    impdf.to_csv(os.path.join(self._outPath,"FEAT_IMP_%s"%self._datetime,"features_importance_iteration%s.csv"%(i+1)), index=False)
             
-        #     print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-        #         round(outdic['Overall Accuracy'][i*3+1],3),round(outdic['Kappa Coefficient'][i*3+1],3),round(outdic['F-Measure'][i*3+1],3)))
+            # Testing
+            test_ix = np.where(np.isin(self._gt_ID, test_ID))
+            test_labels =  self._gt_labels[test_ix]
 
-        #     print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
-        #         round(outdic['Overall Accuracy'][i*3+2],3),round(outdic['Kappa Coefficient'][i*3+2],3),round(outdic['F-Measure'][i*3+2],3)))
+            # Predict & Metrics Spectral Bands
+            spectral_test_samples = spectral_data[test_ix]    
+            spectral_predict = spectral_model.predict(spectral_test_samples)
+            outdic.setdefault('Input',[]).append("Spectral Bands")
+            # outdic.setdefault('Best Parameters',[]).append(spectral_best_param)
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, spectral_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, spectral_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, spectral_predict,average='weighted'))
+            spectral_per_class = f1_score(test_labels, spectral_predict,average=None)
+            spectral_cm = confusion_matrix(test_labels, spectral_predict)
+            self._plot_cm(spectral_cm,lstClass,os.path.join(self._outPath,"CM_%s"%self._datetime,"spectral_cm_iteration%s.png"%(i+1)))
+            spectral_test_samples = None
 
-        # outdf = pd.DataFrame.from_dict(outdic)
-        # outdf.to_csv(outCSViter, index=False)
+            # Predict & Metrics EMP99
+            emp99_test_samples = emp99_data[test_ix]
+            emp99_predict = emp99_model.predict(emp99_test_samples)
+            outdic.setdefault('Input',[]).append("EMP99")
+            # outdic.setdefault('Best Parameters',[]).append(emp99_best_param)
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, emp99_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, emp99_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, emp99_predict,average='weighted'))
+            emp99_per_class = f1_score(test_labels, emp99_predict,average=None)
+            emp99_cm = confusion_matrix(test_labels, emp99_predict)
+            self._plot_cm(emp99_cm,lstClass,os.path.join(self._outPath,"CM_%s"%self._datetime,"emp99_cm_iteration%s.png"%(i+1)))
+            emp99_test_samples = None
 
-        # mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
-        # std_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].std()
+            # Predict & Metrics EMP99 + Spectral Data
+            total99_test_samples = total99_data[test_ix]
+            total99_predict = total99_model.predict(total99_test_samples)
+            outdic.setdefault('Input',[]).append("EMP99 + Spectral Bands")
+            # outdic.setdefault('Best Parameters',[]).append(total99_best_param)
+            outdic.setdefault('Overall Accuracy',[]).append(accuracy_score(test_labels, total99_predict))
+            outdic.setdefault('Kappa Coefficient',[]).append(cohen_kappa_score(test_labels, total99_predict))
+            outdic.setdefault('F-Measure',[]).append(f1_score(test_labels, total99_predict,average='weighted'))
+            total99_per_class = f1_score(test_labels, total99_predict,average=None)
+            total99_cm = confusion_matrix(test_labels, total99_predict)
+            self._plot_cm(total99_cm,lstClass,os.path.join(self._outPath,"CM_%s"%self._datetime,"emp99+spectral_cm_iteration%s.png"%(i+1)))
+            total99_test_samples = None
 
-        # df1 = pd.DataFrame({'Input': ["EMP99", "Spectral Bands", "EMP99 + Spectral Bands",""],
-        #             'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP99']['Overall Accuracy'],3),round(std_df.loc['EMP99']['Overall Accuracy'],3)),
-        #                                  "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['Spectral Bands']['Overall Accuracy'],3)),
-        #                                  "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
-        #                                  ""],
+            print ("EMP99 | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*3+1],3),round(outdic['Kappa Coefficient'][i*3+1],3),round(outdic['F-Measure'][i*3+1],3)))
+            
+            print ("Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*3],3),round(outdic['Kappa Coefficient'][i*3],3),round(outdic['F-Measure'][i*3],3)))
+
+            print ("EMP99 + Spectral Bands | Overall accuracy: %s; Kappa Coefficient: %s; F-Measure: %s"%(
+                round(outdic['Overall Accuracy'][i*3+2],3),round(outdic['Kappa Coefficient'][i*3+2],3),round(outdic['F-Measure'][i*3+2],3)))
+
+        outdf = pd.DataFrame.from_dict(outdic)
+        outdf.to_csv(outCSViter, index=False)
+
+        mean_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].mean()
+        std_df = outdf.groupby(["Input"])[["Overall Accuracy","Kappa Coefficient","F-Measure"]].std()
+
+        df1 = pd.DataFrame({'Input': ["EMP99", "Spectral Bands", "EMP99 + Spectral Bands",""],
+                    'Overall Accuracy': ["%s +/- %s"%(round(mean_df.loc['EMP99']['Overall Accuracy'],3),round(std_df.loc['EMP99']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['Spectral Bands']['Overall Accuracy'],3)),
+                                         "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3),round(std_df.loc['EMP99 + Spectral Bands']['Overall Accuracy'],3)),
+                                         ""],
                                          
-        #             'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP99']['Kappa Coefficient'],3),round(std_df.loc['EMP99']['Kappa Coefficient'],3)),
-        #                                    "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
-        #                                    "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3)),
-        #                                    ""],
+                    'Kappa Coefficient' : ["%s +/- %s"%(round(mean_df.loc['EMP99']['Kappa Coefficient'],3),round(std_df.loc['EMP99']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['Spectral Bands']['Kappa Coefficient'],3)),
+                                           "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3),round(std_df.loc['EMP99 + Spectral Bands']['Kappa Coefficient'],3)),
+                                           ""],
 
-        #             'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP99']['F-Measure'],3),round(std_df.loc['EMP99']['F-Measure'],3)),
-        #                            "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
-        #                            "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP99 + Spectral Bands']['F-Measure'],3)),
-        #                            ""]})
-        # df1.to_csv(outCSV, index=False)
+                    'F-Measure' : ["%s +/- %s"%(round(mean_df.loc['EMP99']['F-Measure'],3),round(std_df.loc['EMP99']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['Spectral Bands']['F-Measure'],3),round(std_df.loc['Spectral Bands']['F-Measure'],3)),
+                                   "%s +/- %s"%(round(mean_df.loc['EMP99 + Spectral Bands']['F-Measure'],3),round(std_df.loc['EMP99 + Spectral Bands']['F-Measure'],3)),
+                                   ""]})
+        df1.to_csv(outCSV, index=False)
 
-        # dic2 = {}
-        # dic2.setdefault('Per Class F-Measure',[]).append("EMP99")
-        # for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
-        #     dic2.setdefault('Class %s'%(v),[]).append(round(emp99_per_class[f],3))
+        dic2 = {}
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP99")
+        for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
+            dic2.setdefault('Class %s'%(v),[]).append(round(emp99_per_class[f],3))
 
-        # dic2.setdefault('Per Class F-Measure',[]).append("Spectral Bands")
-        # for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
-        #     dic2.setdefault('Class %s'%(v),[]).append(round(spectral_per_class[f],3))
+        dic2.setdefault('Per Class F-Measure',[]).append("Spectral Bands")
+        for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
+            dic2.setdefault('Class %s'%(v),[]).append(round(spectral_per_class[f],3))
         
-        # dic2.setdefault('Per Class F-Measure',[]).append("EMP99 + Spectral Bands")
-        # for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
-        #     dic2.setdefault('Class %s'%(v),[]).append(round(total99_per_class[f],3))
+        dic2.setdefault('Per Class F-Measure',[]).append("EMP99 + Spectral Bands")
+        for v,f in zip(list(dicClass.keys()),range(len(list(dicClass.keys())))):
+            dic2.setdefault('Class %s'%(v),[]).append(round(total99_per_class[f],3))
         
-        # dic2.setdefault('Per Class F-Measure',[]).append("")
-        # for v in list(dicClass.keys()):
-        #     dic2.setdefault('Class %s'%(v),[]).append("")
+        dic2.setdefault('Per Class F-Measure',[]).append("")
+        for v in list(dicClass.keys()):
+            dic2.setdefault('Class %s'%(v),[]).append("")
             
-        # df2 = pd.DataFrame.from_dict(dic2)
-        # df2.to_csv(outCSV, mode ='a', index=False)
+        df2 = pd.DataFrame.from_dict(dic2)
+        df2.to_csv(outCSV, mode ='a', index=False)
 
-        # df3 = pd.DataFrame({'Class': [str(v) for v in list(dicClass.keys())],
-        #                     'Name' : [dicClass[v][0] for v in list(dicClass.keys())],
-        #                     'Objects': [dicCount[v] for v in list(dicClass.keys())],
-        #                     'Pixels': [np.count_nonzero(self._gt_labels==v) for v in list(dicClass.keys())]
-        #                     })
-        # df3.to_csv(outCSV, mode='a', index=False)
+        df3 = pd.DataFrame({'Class': [str(v) for v in list(dicClass.keys())],
+                            'Name' : [dicClass[v][0] for v in list(dicClass.keys())],
+                            'Objects': [dicCount[v] for v in list(dicClass.keys())],
+                            'Pixels': [np.count_nonzero(self._gt_labels==v) for v in list(dicClass.keys())]
+                            })
+        df3.to_csv(outCSV, mode='a', index=False)
 
 if __name__ == '__main__':
 
@@ -402,7 +449,7 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
-    CO = Classifier(inPath,ground_truth)
+    CO = Classifier(inPath,ground_truth,DateTime="0201_1101")
     CO.classify()
 
     # ========
@@ -416,5 +463,5 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    # CO = Classifier(inPath,ground_truth)
-    # CO.classify()
+    CO = Classifier(inPath,ground_truth,DateTime="0201_1102")
+    CO.classify()

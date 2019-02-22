@@ -1,15 +1,20 @@
 import glob
 import os
 import re
+import gdal
+import ogr
+import osr
 import rasterio 
 from pprint import pprint
 from datetime import datetime
 import numpy as np
 from sklearn.externals import joblib
 from sklearn.ensemble import RandomForestClassifier
+from itertools import product
+import subprocess
 
 class Classifier :
-    def __init__(self,inPath,ground_truth,niter=5,DateTime=None):
+    def __init__(self,inPath,ground_truth,niter=3,DateTime=None):
         """
         """
         self._inPath = inPath
@@ -22,94 +27,157 @@ class Classifier :
         else :
             self._datetime = DateTime
         self._niter = niter
-        self._prepare_classif()
     
-    def _prepare_classif(self) :
-        
-        if not os.path.isdir(os.path.join(self._outPath,"DATA")):
-            os.makedirs(os.path.join(self._outPath,"DATA"))
+    def map(self,gridsize=(10000,10000)) :
+
+        if not os.path.isdir(os.path.join(self._outPath,"MAP_%s"%self._datetime)):
+            os.makedirs(os.path.join(self._outPath,"MAP_%s"%self._datetime))
 
         lstSpectral = [os.path.join(self._inPath,"GAPF",File) for File in os.listdir(os.path.join(self._inPath,"GAPF")) if File.endswith("GAPF.tif")]
         lstSpectral.sort()
         lstSpectral.extend([os.path.join(self._inPath,"INDICES",File) for File in os.listdir(os.path.join(self._inPath,"INDICES")) if File.endswith("GAPF.tif")])
 
+        lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
+        lstEMP99.sort()
+
+        lstTotal99 = []
+        lstTotal99.extend(lstSpectral)
+        lstTotal99.extend(lstEMP99)
+
         with rasterio.open(lstSpectral[0]) as ds:
             self._profile = ds.profile
-            self._width = ds.width
-            self._height = ds.height
-        self._profile.update(count=1,dtype=rasterio.int16)
-        
-        # Spectral data
-        self._spectral_data = os.path.join(self._outPath,"DATA","spectral_map_data.npy")
-        if not os.path.isfile(self._spectral_data) :
+            self._originX = int(ds.bounds[0])
+            self._ulx = self._originX +1
+            self._lry = int(ds.bounds[1])+1
+            self._lrx = int(ds.bounds[2])-1
+            self._originY = int(ds.bounds[3])
+            self._uly = self._originY -1
+
+        self._gridSize = gridsize
+
+        rect = []
+        for x,y in product(range(self._ulx,self._lrx,self._gridSize[0]),range(self._lry,self._uly,self._gridSize[1])):
+            ring = ogr.Geometry(ogr.wkbLinearRing)
+            ring.AddPoint(x, y)
+            if (x+self._gridSize[0] > self._lrx) and (y+self._gridSize[1] > self._uly) :
+                ring.AddPoint(self._lrx, y)
+                ring.AddPoint(self._lrx, self._uly)
+                ring.AddPoint(x, self._uly)
+            elif x+self._gridSize[0] > self._lrx :
+                ring.AddPoint(self._lrx, y)
+                ring.AddPoint(self._lrx, y + self._gridSize[1])
+                ring.AddPoint(x, y + self._gridSize[1])
+            elif y+self._gridSize[1] > self._uly :
+                ring.AddPoint(x + self._gridSize[0], y)
+                ring.AddPoint(x + self._gridSize[0], self._uly)
+                ring.AddPoint(x, self._uly)
+            else : 
+                ring.AddPoint(x + self._gridSize[0], y)
+                ring.AddPoint(x + self._gridSize[0], y + self._gridSize[1])
+                ring.AddPoint(x, y + self._gridSize[1])
+                
+            ring.AddPoint(x, y)
+            poly = ogr.Geometry(ogr.wkbPolygon)
+            poly.AddGeometry(ring)
+            rect.append(poly)
+
+        print ("Map will be produced in %s blocks"%len(rect))
+
+        # Spectral Map production
+        print ("Spectral Map production")
+        spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(self._niter)))
+        for poly in rect :
+            extent = poly.GetEnvelope()
+            poly_ulx = extent[0]
+            poly_lry = extent[2]
+            poly_lrx = extent[1]
+            poly_uly = extent[3]
+
+            poly_xsize = int((poly_lrx-poly_ulx) /10)
+            poly_ysize = int((poly_lry-poly_uly) /-10)
+            xOffset = int((poly_ulx - self._originX) / 10)
+            yOffset = int((poly_uly - self._originY) / -10)
+
+            self._profile.update(count=1,dtype=rasterio.int16,nodata=0,width=poly_xsize,height=poly_ysize,
+                           transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
             spectral_samples = None
             for File in lstSpectral :
                 with rasterio.open(File) as ds :
                     for j in range(ds.count):
                         if spectral_samples is None :
-                            spectral_samples = ds.read(j+1).reshape((self._width*self._width))
+                            spectral_samples = ds.read(j+1,window=((yOffset,yOffset+poly_ysize),(xOffset,xOffset+poly_xsize))).reshape(poly_xsize*poly_ysize)
                         else :
-                            spectral_samples = np.column_stack((spectral_samples,ds.read(j+1).reshape((self._width*self._width))))
-            np.save(self._spectral_data,spectral_samples)
+                            spectral_samples = np.column_stack((spectral_samples,ds.read(j+1,window=((yOffset,yOffset+poly_ysize),(xOffset,xOffset+poly_xsize))).reshape(poly_xsize*poly_ysize)))
+            
+            spectral_predict = spectral_model.predict(spectral_samples)
+            spectral_map = spectral_predict.reshape((poly_xsize,poly_ysize))
+            with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
+                outDS.write(spectral_map.astype(rasterio.int16),1)
             spectral_samples = None
+            print ('Block %s mapped'%(rect.index(poly)+1))
+        
+        lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'spectral*.tif')
+        lstMos.sort()
+        pprint (lstMos)
+        command = ["gdalwarp"]
+        command.extend(lstMos)
+        command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map%s.tif')]
+        subprocess.call(command,shell=False) 
+        
+        # EMP 99 + Spectral Map production
+        print ("EMP 99 + Spectral Map production")
+        total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(self._niter)))    
+        for poly in rect :
+            extent = poly.GetEnvelope()
+            poly_ulx = extent[0]
+            poly_lry = extent[2]
+            poly_lrx = extent[1]
+            poly_uly = extent[3]
 
-        # EMP
-        self._emp99_data = os.path.join(self._outPath,"DATA","emp99_map_data.npy")
-        if not os.path.isfile(self._emp99_data) :
-            lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
-            lstEMP99.sort()
-            emp99_samples = None
-            for File in lstEMP99 :
+            poly_xsize = int((poly_lrx-poly_ulx) /10)
+            poly_ysize = int((poly_lry-poly_uly) /-10)
+            xOffset = int((poly_ulx - self._originX) / 10)
+            yOffset = int((poly_uly - self._originY) / -10)
+
+            self._profile.update(count=1,dtype=rasterio.int16,nodata=0,width=poly_xsize,height=poly_ysize,
+                           transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
+            total99_samples = None
+            for File in lstTotal99 :
                 with rasterio.open(File) as ds :
-                    for j in range(ds.count) :
-                        if emp99_samples is None :
-                            emp99_samples = ds.read(j+1).reshape((self._width*self._width))
+                    for j in range(ds.count):
+                        if total99_samples is None :
+                            total99_samples = ds.read(j+1,window=((yOffset,yOffset+poly_ysize),(xOffset,xOffset+poly_xsize))).reshape(poly_xsize*poly_ysize)
                         else :
-                            emp99_samples = np.column_stack((emp99_samples,ds.read(j+1).reshape((self._width*self._width))))
-            np.save(self._emp99_data,emp99_samples)
-            emp99_samples = None
+                            total99_samples = np.column_stack((total99_samples,ds.read(j+1,window=((yOffset,yOffset+poly_ysize),(xOffset,xOffset+poly_xsize))).reshape(poly_xsize*poly_ysize)))
+            
+            total99_predict = total99_model.predict(total99_samples)
+            total99_map = total99_predict.reshape((poly_xsize,poly_ysize))
+            with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99+spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
+                outDS.write(total99_map.astype(rasterio.int16),1)
+            total99_samples = None
+            print ('Block %s mapped'%(rect.index(poly)+1))
+
+        lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'emp99+spectral*.tif')
+        lstMos.sort()
+        pprint (lstMos)
+        command = ["gdalwarp"]
+        command.extend(lstMos)
+        command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map%s.tif')]
+        subprocess.call(command,shell=False) 
         
-        # EMP99 + Spectral data
-        self._total99_data = os.path.join(self._outPath,"DATA","total99_map_data.npy")
-        if not os.path.isfile(self._total99_data) :
-            emp99_samples = np.load(self._emp99_data)
-            spectral_samples = np.load(self._spectral_data)
-            np.save(self._total99_data,np.column_stack((emp99_samples,spectral_samples)))
-            emp99_samples = None
-            spectral_samples = None
-        
-    def classify (self):
-        # emp99_data = np.load(self._emp99_data)
-        spectral_data = np.load(self._spectral_data)
-        total99_data = np.load(self._total99_data)
-
-        if not os.path.isdir(os.path.join(self._outPath,"MAP_%s"%self._datetime)):
-            os.makedirs(os.path.join(self._outPath,"MAP_%s"%self._datetime))
-    
-        for i in range(self._niter,self._niter+1):
-            # Spectral Bands
-            spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))) 
-            spectral_predict = spectral_model.predict(spectral_data)
-            spectral_map = spectral_predict.reshape((self._width,self._height))
-            with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map_iteration%s.tif'%(i+1)),'w',**self._profile) as outDS :
-                outDS.write(spectral_map,1)
-            print ("Map produced with Spectral Features !")
-
-            # EMP99
-            # emp99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
-            # emp99_predict = emp99_model.predict(emp99_data)
-            # emp99_map = emp99_predict.reshape((self._width,self._height))
-            # with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99_map_iteration%s.tif'%(i+1)),'w',**self._profile) as outDS :
-            #     outDS.write(emp99_map,1)
-            # print ("Map produced with EMP 99 Features !")
-
-            # EMP99 + Spectral Bands
-            total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1)))
-            total99_predict = total99_model.predict(total99_data)
-            total99_map = total99_predict.reshape((self._width,self._height))
-            with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'total99_map_iteration%s.tif'%(i+1)),'w',**self._profile) as outDS :
-                outDS.write(total99_map,1)
-            print ("Map produced with EMP 99 + Spectral Features !")
+        # driver = ogr.GetDriverByName('ESRI Shapefile')
+        # spatialRef = osr.SpatialReference()
+        # spatialRef.ImportFromEPSG(32740)  
+        # for p in range(len(rect)) :
+        #     outDs = driver.CreateDataSource(os.path.join(self._outPath,"MAP_%s"%self._datetime,"map_grid_%s.shp"%(p+1)))
+        #     outLayer = outDs.CreateLayer("map_grid_%s"%(p+1), srs=spatialRef,geom_type=ogr.wkbPolygon)
+        #     featureDefn = outLayer.GetLayerDefn()
+        #     outFeature = ogr.Feature(featureDefn)
+        #     outFeature.SetGeometry(rect[p])
+        #     outLayer.CreateFeature(outFeature)
+        #     outFeature = None
+        #     outDs = None
+        #     print (rect[p].ExportToWkt())
 
 if __name__ == '__main__':
 
@@ -121,7 +189,7 @@ if __name__ == '__main__':
     inPath = "/media/je/SATA_1/Lab1/REUNION/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/REUNION/BD_GABIR_2017_v3/REUNION_GT_SAMPLES.shp"
     CO = Classifier(inPath,ground_truth,niter=3,DateTime="0201_1101")
-    CO.classify()
+    CO.map()
 
     # ========
     # DORDOGNE
@@ -130,5 +198,5 @@ if __name__ == '__main__':
     # Classification
     inPath = "/media/je/SATA_1/Lab1/DORDOGNE/OUTPUT"
     ground_truth = "/media/je/SATA_1/Lab1/DORDOGNE/SOURCE_VECTOR/DORDOGNE_GT_SAMPLES_BUF-10_NOROADS.shp"
-    CO = Classifier(inPath,ground_truth,niter=3,DateTime="0201_1102")
-    CO.classify()
+    # CO = Classifier(inPath,ground_truth,niter=3,DateTime="0201_1102")
+    # CO.map()
