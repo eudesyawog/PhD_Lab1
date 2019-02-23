@@ -253,13 +253,13 @@ class Classifier :
             fold.extend([0]*validation_labels.size)
             ps = PredefinedSplit(test_fold=fold)
 
-            GridSearch
+            # GridSearch
             rf = RandomForestClassifier()
             n_estimators = [200,300,400,500]
             max_depth = [20,40,60,80,100,None]
             tuned_parameters = {'n_estimators': n_estimators,
                                 'max_depth': max_depth}
-            Spectral Bands
+            # Spectral Bands
             if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1))):
                 spectral_merged_samples = spectral_data[merged_ix]
                 grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,verbose=2)
@@ -277,7 +277,7 @@ class Classifier :
             else:
                 spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(i+1)))
 
-            EMP99
+            # EMP99
             if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1))):
                 emp99_merged_samples = emp99_data[merged_ix]
                 grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1,pre_dispatch=8,verbose=2)
@@ -309,7 +309,7 @@ class Classifier :
             else:
                 emp99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99_model_iteration%s.pkl'%(i+1)))
             
-            EMP99 + Spectral Bands
+            # EMP99 + Spectral Bands
             if not os.path.isfile(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(i+1))):
                 total99_merged_samples = total99_data[merged_ix]
                 grid = GridSearchCV(rf, param_grid=tuned_parameters, cv=ps, n_jobs=-1, pre_dispatch=3,verbose=3)

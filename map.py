@@ -37,12 +37,12 @@ class Classifier :
         lstSpectral.sort()
         lstSpectral.extend([os.path.join(self._inPath,"INDICES",File) for File in os.listdir(os.path.join(self._inPath,"INDICES")) if File.endswith("GAPF.tif")])
 
-        # lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
-        # lstEMP99.sort()
+        lstEMP99 = glob.glob(os.path.join(self._inPath,"EMP_99")+os.sep+"*EMP.tif")
+        lstEMP99.sort()
 
-        # lstTotal99 = []
-        # lstTotal99.extend(lstSpectral)
-        # lstTotal99.extend(lstEMP99)
+        lstTotal99 = []
+        lstTotal99.extend(lstEMP99)
+        lstTotal99.extend(lstSpectral)
 
         with rasterio.open(lstSpectral[0]) as ds:
             self._profile = ds.profile
@@ -55,7 +55,6 @@ class Classifier :
         
         self._proj = osr.SpatialReference()
         self._proj.ImportFromEPSG(epsg)
-
         self._gridSize = gridsize
 
         rect = []
@@ -86,109 +85,118 @@ class Classifier :
 
         print ("Map will be produced in %s blocks"%len(rect))
         mem_drv = gdal.GetDriverByName('MEM')
+
         # Spectral Map production
-        print ("Spectral Map production")
-        spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(self._niter)))
+        if not os.path.isfile(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map.tif')) : 
+            print ("Spectral Map production")
+            spectral_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'spectral_model_iteration%s.pkl'%(self._niter)))
 
-#        for poly in rect :
-#            extent = poly.GetEnvelope()
-#            poly_ulx = extent[0]
-#            poly_lry = extent[2]
-#            poly_lrx = extent[1]
-#            poly_uly = extent[3]
+            for poly in rect :
+                extent = poly.GetEnvelope()
+                poly_ulx = extent[0]
+                poly_lry = extent[2]
+                poly_lrx = extent[1]
+                poly_uly = extent[3]
 
-#            poly_xsize = int((poly_lrx-poly_ulx) /10)
-#            poly_ysize = int((poly_lry-poly_uly) /-10)
-#            # xOffset = int((poly_ulx - self._originX) / 10)
-#            # yOffset = int((poly_uly - self._originY) / -10)
+                poly_xsize = int((poly_lrx-poly_ulx) /10)
+                poly_ysize = int((poly_lry-poly_uly) /-10)
+                # xOffset = int((poly_ulx - self._originX) / 10)
+                # yOffset = int((poly_uly - self._originY) / -10)
 
-#            self._profile.update(count=1,dtype=rasterio.uint8,nodata=0,width=poly_xsize,height=poly_ysize,
-#                           transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
+                self._profile.update(count=1,dtype=rasterio.uint8,nodata=0,width=poly_xsize,height=poly_ysize,
+                                transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
 
-#            spectral_samples = None
-#            for File in lstSpectral :
-#                with rasterio.open(File) as ds :
-#                    count = ds.count
-#                dest = mem_drv.Create('', poly_xsize, poly_ysize, count, gdal.GDT_Float32)
-#                dest.SetGeoTransform((poly_ulx,10.,0.,poly_uly,0.,-10.))
-#                dest.SetProjection(self._proj.ExportToWkt())
-#                gdal.Warp(dest, File, outputBounds=(poly_ulx, poly_lry, poly_lrx, poly_uly))
-#                for p in range(1,count+1):
-#                    if spectral_samples is None :
-#                        spectral_samples = dest.GetRasterBand(p).ReadAsArray().reshape(poly_ysize*poly_xsize)
-#                    else :
-#                        spectral_samples = np.column_stack((spectral_samples,dest.GetRasterBand(p).ReadAsArray().reshape(poly_ysize*poly_xsize)))
-#                dest = None
-            # print (spectral_samples.shape)
-            # profile = self._profile.copy()
-            # profile.update(count = spectral_samples.shape[1],dtype=rasterio.float32)
-            # spectral_samples2 = spectral_samples.copy()
-            # spectral_samples2 = spectral_samples2.reshape((poly_ysize,poly_xsize,spectral_samples.shape[1]))
-            # with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_samples_grid%s.tif'%(rect.index(poly)+1)),'w',**profile) as outDS :
-                # for o in range(1,count+1):
-                    # outDS.write(spectral_samples2[:,:,o].astype(rasterio.float32),o)
-#            spectral_predict = spectral_model.predict(spectral_samples)
-#            spectral_map = spectral_predict.reshape((poly_ysize,poly_xsize))
-#            with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
-#                outDS.write(spectral_map.astype(rasterio.uint8),1)
-#            spectral_samples = None
-#            print ('Block %s mapped'%(rect.index(poly)+1))
-        
-        lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'spectral_map_grid*.tif')
-        lstMos.sort()
-        pprint (lstMos)
-        command = ["gdalwarp","-overwrite","-srcnodata","0","-dstnodata","0","-ot","Byte"]
-        command.extend(lstMos)
-        command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map.tif')]
-        subprocess.call(command,shell=False) 
+                spectral_samples = None
+                for File in lstSpectral :
+                    with rasterio.open(File) as ds :
+                        count = ds.count
+                    dest = mem_drv.Create('', poly_xsize, poly_ysize, count, gdal.GDT_Float32)
+                    dest.SetGeoTransform((poly_ulx,10.,0.,poly_uly,0.,-10.))
+                    dest.SetProjection(self._proj.ExportToWkt())
+                    gdal.Warp(dest, File, outputBounds=(poly_ulx, poly_lry, poly_lrx, poly_uly))
+                    for p in range(1,count+1):
+                        if spectral_samples is None :
+                            spectral_samples = dest.GetRasterBand(p).ReadAsArray().reshape(poly_ysize*poly_xsize)
+                        else :
+                            spectral_samples = np.column_stack((spectral_samples,dest.GetRasterBand(p).ReadAsArray().reshape(poly_ysize*poly_xsize)))
+                    dest = None
+                    
+                    # profile = self._profile.copy()
+                    # profile.update(count = spectral_samples.shape[1],dtype=rasterio.float32)
+                    # spectral_samples2 = spectral_samples.copy()
+                    # spectral_samples2 = spectral_samples2.reshape((poly_ysize,poly_xsize,spectral_samples.shape[1]))
+                    # with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_samples_grid%s.tif'%(rect.index(poly)+1)),'w',**profile) as outDS :
+                    #     for o in range(1,count+1):
+                    #         outDS.write(spectral_samples2[:,:,o].astype(rasterio.float32),o)
+
+                spectral_predict = spectral_model.predict(spectral_samples)
+                spectral_map = spectral_predict.reshape((poly_ysize,poly_xsize))
+                with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
+                    outDS.write(spectral_map.astype(rasterio.uint8),1)
+                spectral_samples = None
+                print ('Block %s mapped'%(rect.index(poly)+1))
+                
+            lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'spectral_map_grid*.tif')
+            lstMos.sort()
+            pprint (lstMos)
+            command = ["gdalwarp","-overwrite","-srcnodata","0","-dstnodata","0","-ot","Byte"]
+            command.extend(lstMos)
+            command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map.tif')]
+            subprocess.call(command,shell=False) 
+        else :
+            print ("Spectral Map already produced")
         
         # EMP 99 + Spectral Map production
-        # print ("EMP 99 + Spectral Map production")
-        # total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(self._niter)))    
-        # for poly in rect :
-            # extent = poly.GetEnvelope()
-            # poly_ulx = extent[0]
-            # poly_lry = extent[2]
-            # poly_lrx = extent[1]
-            # poly_uly = extent[3]
+        if not os.path.isfile(os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99+spectral_map.tif')) :
+            print ("EMP 99 + Spectral Map production")
+            total99_model = joblib.load(os.path.join(self._outPath,"MODELS_%s"%self._datetime,'emp99+spectral_model_iteration%s.pkl'%(self._niter)))    
+            for poly in rect :
+                extent = poly.GetEnvelope()
+                poly_ulx = extent[0]
+                poly_lry = extent[2]
+                poly_lrx = extent[1]
+                poly_uly = extent[3]
 
-            # poly_xsize = int((poly_lrx-poly_ulx) /10)
-            # poly_ysize = int((poly_lry-poly_uly) /-10)
-            # xOffset = int((poly_ulx - self._originX) / 10)
-            # yOffset = int((poly_uly - self._originY) / -10)
+                poly_xsize = int((poly_lrx-poly_ulx) /10)
+                poly_ysize = int((poly_lry-poly_uly) /-10)
+                # xOffset = int((poly_ulx - self._originX) / 10)
+                # yOffset = int((poly_uly - self._originY) / -10)
 
-            # self._profile.update(count=1,dtype=rasterio.int16,nodata=0,width=poly_xsize,height=poly_ysize,
-                           # transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
-            # total99_samples = None
-            # for File in lstTotal99 :
-                # with rasterio.open(File) as ds :
-                    # count = ds.count
-                # dest = mem_drv.Create('', poly_xsize, poly_ysize, count, gdal.GDT_Float32)
-                # dest.SetGeoTransform((poly_ulx,10.,0.,poly_uly,0.,-10.))
-                # dest.SetProjection(self._proj.ExportToWkt())
-                # gdal.Warp(dest, File, outputBounds=(poly_ulx, poly_lry, poly_lrx, poly_uly))
-                # for p in range(1,count+1):
-                    # if total99_samples is None :
-                        # total99_samples = dest.GetRasterBand(p).ReadAsArray().reshape(poly_xsize*poly_ysize)
-                    # else :
-                        # total99_samples = np.column_stack((total99_samples,dest.GetRasterBand(p).ReadAsArray().reshape(poly_xsize*poly_ysize)))
-                # dest = None
+                self._profile.update(count=1,dtype=rasterio.int16,nodata=0,width=poly_xsize,height=poly_ysize,
+                            transform=(10.,0.,poly_ulx,0.,-10.,poly_uly))
+                total99_samples = None
+                for File in lstTotal99 :
+                    with rasterio.open(File) as ds :
+                        count = ds.count
+                    dest = mem_drv.Create('', poly_xsize, poly_ysize, count, gdal.GDT_Float32)
+                    dest.SetGeoTransform((poly_ulx,10.,0.,poly_uly,0.,-10.))
+                    dest.SetProjection(self._proj.ExportToWkt())
+                    gdal.Warp(dest, File, outputBounds=(poly_ulx, poly_lry, poly_lrx, poly_uly))
+                    for p in range(1,count+1):
+                        if total99_samples is None :
+                            total99_samples = dest.GetRasterBand(p).ReadAsArray().reshape(poly_xsize*poly_ysize)
+                        else :
+                            total99_samples = np.column_stack((total99_samples,dest.GetRasterBand(p).ReadAsArray().reshape(poly_xsize*poly_ysize)))
+                    dest = None
 
-            # total99_predict = total99_model.predict(total99_samples)
-            # total99_map = total99_predict.reshape((poly_xsize,poly_ysize))
-            # with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99+spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
-                # outDS.write(total99_map.astype(rasterio.int16),1)
-            # total99_samples = None
-            # print ('Block %s mapped'%(rect.index(poly)+1))
+                total99_predict = total99_model.predict(total99_samples)
+                total99_map = total99_predict.reshape((poly_ysize,poly_xsize))
+                with rasterio.open(os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99+spectral_map_grid%s.tif'%(rect.index(poly)+1)),'w',**self._profile) as outDS :
+                    outDS.write(total99_map.astype(rasterio.uint8),1)
+                total99_samples = None
+                print('Block %s mapped'%(rect.index(poly)+1))
 
-        # lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'emp99+spectral_map_grid*.tif')
-        # lstMos.sort()
-        # pprint (lstMos)
-        # command = ["gdalwarp","-overwrite","-srcnodata","0","-dstnodata","0","-ot","Byte"]
-        # command.extend(lstMos)
-        # command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'spectral_map%s.tif')]
-        # subprocess.call(command,shell=False) 
-        
+            lstMos = glob.glob(os.path.join(self._outPath,"MAP_%s"%self._datetime)+os.sep+'emp99+spectral_map_grid*.tif')
+            lstMos.sort()
+            pprint (lstMos)
+            command = ["gdalwarp","-overwrite","-srcnodata","0","-dstnodata","0","-ot","Byte"]
+            command.extend(lstMos)
+            command+=[os.path.join(self._outPath,"MAP_%s"%self._datetime,'emp99+spectral_map.tif')]
+            subprocess.call(command,shell=False) 
+        else : 
+            print ("EMP 99 + Spectral Map already produced")
+        mem_drv = None
+            
         # driver = ogr.GetDriverByName('ESRI Shapefile')
         # spatialRef = osr.SpatialReference()
         # spatialRef.ImportFromEPSG(32740)  
